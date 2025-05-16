@@ -1,9 +1,33 @@
 <!-- NetworkMap.vue -->
 <template>
-  <div
-    class="bg-white rounded-xl border border-gray-300 shadow h-full relative"
-    ref="graphContainer"
-  ></div>
+  <div class="relative h-full">
+    <!-- Graph container -->
+    <div
+      class="bg-white rounded-xl border border-gray-300 shadow h-full"
+      ref="graphContainer"
+    ></div>
+
+    <!-- Node detail panel -->
+    <div
+      v-if="selectedNode"
+      class="absolute top-4 right-4 bg-white border border-gray-300 rounded-xl shadow p-4 w-64"
+    >
+      <h3 class="font-semibold mb-2">Node: {{ selectedNode.label }}</h3>
+      <p><strong>IP:</strong> {{ selectedNode.id }}</p>
+      <p>
+        <strong>Status:</strong>
+        <span :class="selectedNode.online ? 'text-green-600' : 'text-red-600'">
+          {{ selectedNode.online ? ' Online' : ' Offline' }}
+        </span>
+      </p>
+      <button
+        class="mt-4 px-3 py-1 bg-gray-200 rounded hover:bg-gray-300"
+        @click="selectedNode = null"
+      >
+        Close
+      </button>
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -14,6 +38,9 @@ const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 let timerId
 const positions = new Map()
 let simulation
+
+const graphContainer = ref(null)
+const selectedNode = ref(null)
 
 async function fetchTopology() {
   const res = await fetch(`${API}/api/topology`)
@@ -66,13 +93,17 @@ function renderGraph({ nodes, links }) {
     .selectAll('circle')
     .data(nodes, d => d.id)
     .join('circle')
-    .attr('r', 12)
-    .attr('fill', d => (d.online ? '#007bff' : '#dc2626'))
-    .call(d3.drag()
-      .on('start', dragstarted)
-      .on('drag', dragged)
-      .on('end', dragended)
-    )
+      .attr('r', 12)
+      .attr('fill', d => (d.online ? '#007bff' : '#dc2626'))
+      .style('cursor', 'pointer')
+      .on('click', (_, d) => {
+        selectedNode.value = d
+      })
+      .call(d3.drag()
+        .on('start', dragstarted)
+        .on('drag', dragged)
+        .on('end', dragended)
+      )
 
   // Draw labels
   svg.append('g')
@@ -122,6 +153,15 @@ async function updateGraph() {
   try {
     const topo = await fetchTopology()
     renderGraph(topo)
+
+    // ← if a node is selected, find its up-to-date copy
+    if (selectedNode.value) {
+      const fresh = topo.nodes.find(n => n.id === selectedNode.value.id)
+      // either re-assign the full object…
+      selectedNode.value = fresh || null
+      // …or clear if it’s gone
+    }
+
   } catch (e) {
     console.error('Failed to fetch topology:', e)
   } finally {
@@ -130,11 +170,9 @@ async function updateGraph() {
   }
 }
 
-const graphContainer = ref(null)
-
 onMounted(() => {
   updateGraph()
-  window.addEventListener('resize', () => updateGraph())
+  window.addEventListener('resize', updateGraph)
 })
 
 onUnmounted(() => {
