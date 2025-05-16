@@ -20,6 +20,7 @@
           {{ selectedNode.online ? ' Online' : ' Offline' }}
         </span>
       </p>
+      <p><strong>MAC:</strong> {{ selectedNode.mac || 'Unknown' }}</p>
       <button
         class="mt-4 px-3 py-1 bg-gray-200 rounded hover:bg-gray-300"
         @click="selectedNode = null"

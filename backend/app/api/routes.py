@@ -35,9 +35,10 @@ def generate_topology():
 
     nodes = [
         {
-            "id":     d["ip"],
-            "label":  d["ip"],
+            "id": d["ip"],
+            "label": d["ip"],
             "online": bool(d["online"]),
+            "mac": d["mac"],  # Add MAC address
         }
         for d in devices
     ]
