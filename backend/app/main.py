@@ -7,7 +7,7 @@ import asyncio
 from backend.app.services.network_monitor import discover_devices
 from backend.app.config import SYNC_INTERVAL_SECONDS
 
-app = FastAPI()  # ✅ define this FIRST
+app = FastAPI()
 
 # Allow frontend access
 app.add_middleware(
