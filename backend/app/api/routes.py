@@ -1,0 +1,32 @@
+# NetView/backend/app/api/routes.py
+from fastapi import APIRouter
+from fastapi.concurrency import run_in_threadpool
+from backend.app.services.network_monitor import get_network_stats, discover_devices
+
+router = APIRouter()
+
+
+@router.get("/stats")
+def fetch_stats():
+    stats = get_network_stats()
+    return stats
+
+
+@router.get("/topology")
+async def get_topology():
+    return await run_in_threadpool(generate_topology)
+
+
+@router.get("/debug/devices")
+async def get_all_devices_debug():
+    from backend.app.database import get_all_devices
+    return get_all_devices()
+
+
+def generate_topology():
+    devices = discover_devices()
+    gateway_ip = devices[0]['ip'] if devices else "192.168.1.1"
+    nodes = [{"id": d["ip"], "label": d["ip"]} for d in devices]
+    links = [{"source": gateway_ip, "target": d["ip"]} for d in devices]
+    return {"nodes": nodes, "links": links}
+
