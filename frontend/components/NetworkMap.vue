@@ -55,7 +55,7 @@
       <p class="text-sm"><strong>IP:</strong> {{ selectedNode.id }}</p>
       <p class="mt-1 text-sm">
         <strong>Status: </strong>
-        <span :class="selectedNode.online ? 'text-green-600' : 'text-red-600'">
+        <span :class="selectedNode.online ? 'text-emerald-600' : 'text-slate-500 italic'">
           {{ selectedNode.online ? 'Online' : 'Offline' }}
         </span>
       </p>
@@ -135,7 +135,7 @@ function renderGraph({ nodes, links }) {
     .data(nodes, d => d.id)
     .join('circle')
       .attr('r', 12)
-      .attr('fill', d => (d.online ? '#007bff' : '#dc2626'))
+      .attr('fill', d => (d.online ? '#10b981' : '#94a3b8')) // emerald-500 and slate-400
       .style('cursor', 'pointer')
       .on('click', (_, d) => {
         selectedNode.value = d
