@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-screen bg-gradient-to-r from-zinc-200 via-white to-zinc-200 flex flex-col">
     <!-- Container with border and neutral background -->
-    <div class="bg-white border-l border-r border-slate-500 shadow-lg w-full max-w-7xl p-6 mx-auto flex-1 flex flex-col">
+    <div class="bg-white border-l border-r border-slate-300 shadow-lg w-full max-w-7xl p-6 mx-auto flex-1 flex flex-col">
       <FilterBar />
 
       <!-- Main content area -->
