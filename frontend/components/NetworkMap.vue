@@ -11,44 +11,48 @@
       v-if="selectedNode"
       class="absolute top-4 right-4 bg-white border border-gray-300 rounded-xl shadow p-4 w-64 z-10"
     >
-      <!-- Editable title -->
-      <div class="flex items-center mb-2">
-        <template v-if="editing">
+     <div class="mb-2">
+      <template v-if="editing">
+        <div class="flex items-center mb-2">
           <input
             v-model="newName"
-            class="border border-gray-300 rounded p-1 flex-1 mr-2 text-sm"
+            class="border border-gray-300 rounded p-1 flex-1 text-sm"
             placeholder="Enter name"
           />
+        </div>
+        <div class="flex justify-start gap-2">
           <button
-            class="px-2 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
+            class="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
             @click="saveName"
             :disabled="saving"
           >
             {{ saving ? 'Saving…' : 'Save' }}
           </button>
           <button
-            class="ml-1 px-2 py-1 bg-gray-200 rounded text-sm hover:bg-gray-300"
+            class="px-3 py-1 bg-gray-200 rounded text-sm hover:bg-gray-300"
             @click="cancelEdit"
             :disabled="saving"
           >
             Cancel
           </button>
-        </template>
-        <template v-else>
-          <div class="flex items-center">
-            <span class="font-semibold text-lg">{{ selectedNode.label }}</span>
-            <button
-              class="ml-1 text-black hover:text-gray-700"
-              @click="startEdit"
-              title="Rename"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="black" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 20h9M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4L16.5 3.5z" />
-              </svg>
-            </button>
-          </div>
-        </template>
-      </div>
+        </div>
+      </template>
+  <template v-else>
+    <div class="flex items-center justify-between">
+      <span class="font-semibold text-lg break-all">{{ selectedNode.label }}</span>
+      <button
+        class="ml-1 text-black hover:text-gray-700"
+        @click="startEdit"
+        title="Rename"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="black" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 20h9M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4L16.5 3.5z" />
+        </svg>
+      </button>
+    </div>
+  </template>
+</div>
+
 
       <p class="text-sm"><strong>IP:</strong> {{ selectedNode.id }}</p>
       <p class="mt-1 text-sm">
@@ -68,9 +72,25 @@
     </div>
 
     <!-- Legend -->
-    <div class="absolute bottom-4 left-4 bg-white p-2 rounded shadow text-xs z-10">
+    <div class="absolute bottom-4 left-4 bg-white border border-gray-200 rounded-md shadow p-2 text-xs z-10">
       <div><span class="inline-block w-3 h-3 rounded-full bg-emerald-500 mr-1"></span> Online</div>
       <div><span class="inline-block w-3 h-3 rounded-full bg-slate-400 mr-1"></span> Offline</div>
+    </div>
+
+    <!-- Zoom Controls -->
+    <div class="absolute bottom-4 right-4 flex flex-col space-y-2 z-10">
+      <button
+        @click="zoomIn"
+        class="text-sm px-2 py-1 bg-white border border-gray-200 rounded-md shadow hover:bg-gray-100"
+      >
+        ＋
+      </button>
+      <button
+        @click="zoomOut"
+        class="text-sm px-2 py-1 bg-white border border-gray-200 rounded-md shadow hover:bg-gray-100"
+      >
+        －
+      </button>
     </div>
   </div>
 </template>
@@ -112,17 +132,21 @@ function renderGraph({ nodes, links }) {
   })
 
   const svg = d3.select(container).append('svg')
-    .attr('width', width)
-    .attr('height', height)
+  .attr('viewBox', `0 0 ${width} ${height}`)
+  .attr('preserveAspectRatio', 'xMidYMid meet')
+  .classed('w-full h-full', true)
 
-  const link = svg.append('g')
+
+  const zoomGroup = svg.append('g')
+
+  const link = zoomGroup.append('g')
     .attr('stroke', '#cbd5e1')
     .selectAll('line')
     .data(links)
     .join('line')
     .attr('stroke-width', 2)
 
-  const nodeGroup = svg.append('g')
+  const nodeGroup = zoomGroup.append('g')
     .attr('stroke', '#e5e7eb')
     .attr('stroke-width', 2)
     .selectAll('circle')
@@ -132,24 +156,16 @@ function renderGraph({ nodes, links }) {
     .attr('fill', d => d.is_gateway ? '#0ea5e9' : d.online ? '#10b981' : '#94a3b8')
     .style('cursor', 'pointer')
     .style('filter', 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1))')
-    .on('mouseover', function () {
-      d3.select(this).attr('stroke', '#0ea5e9')
-    })
-    .on('mouseout', function () {
-      d3.select(this).attr('stroke', '#e5e7eb')
-    })
+    .on('mouseover', function () { d3.select(this).attr('stroke', '#0ea5e9') })
+    .on('mouseout', function () { d3.select(this).attr('stroke', '#e5e7eb') })
     .on('click', (_, d) => {
       selectedNode.value = d
       editing.value = false
       newName.value = d.label
     })
-    .call(d3.drag()
-      .on('start', dragstarted)
-      .on('drag', dragged)
-      .on('end', dragended)
-    )
+    .call(d3.drag().on('start', dragstarted).on('drag', dragged).on('end', dragended))
 
-  const labels = svg.append('g')
+  const labels = zoomGroup.append('g')
     .selectAll('g')
     .data(nodes)
     .join('g')
@@ -190,7 +206,7 @@ function renderGraph({ nodes, links }) {
       .each(d => positions.set(d.id, { x: d.x, y: d.y }))
 
     labels.attr('transform', d => `translate(${d.x + 15}, ${d.y + 5})`)
-    labels.selectAll('rect').each(function(_, i) {
+    labels.selectAll('rect').each(function (_, i) {
       const textEl = this.nextSibling
       if (textEl && textEl.getBBox) {
         const { width, height } = textEl.getBBox()
@@ -215,6 +231,19 @@ function renderGraph({ nodes, links }) {
     d.fx = null
     d.fy = null
   }
+
+  // Zooming
+  const zoom = d3.zoom()
+    .scaleExtent([0.5, 5])
+    .on('zoom', (event) => {
+      zoomGroup.attr('transform', event.transform)
+      renderGraph.zoomTransform = event.transform
+    })
+
+  svg.call(zoom)
+  renderGraph.zoom = zoom
+  renderGraph.zoomTransform = d3.zoomIdentity
+  svg.call(zoom.transform, renderGraph.zoomTransform)
 }
 
 async function updateGraph() {
@@ -227,6 +256,18 @@ async function updateGraph() {
     clearTimeout(timerId)
     timerId = setTimeout(updateGraph, 10000)
   }
+}
+
+function zoomIn() {
+  const svg = d3.select(graphContainer.value).select('svg')
+  renderGraph.zoomTransform = renderGraph.zoomTransform.scale(1.2)
+  svg.transition().duration(300).call(renderGraph.zoom.transform, renderGraph.zoomTransform)
+}
+
+function zoomOut() {
+  const svg = d3.select(graphContainer.value).select('svg')
+  renderGraph.zoomTransform = renderGraph.zoomTransform.scale(0.8)
+  svg.transition().duration(300).call(renderGraph.zoom.transform, renderGraph.zoomTransform)
 }
 
 function startEdit() {
@@ -277,7 +318,6 @@ svg {
   width: 100%;
   height: 100%;
 }
-
 .tooltip {
   position: absolute;
   background: white;
@@ -288,13 +328,11 @@ svg {
   font-size: 0.75rem;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
 }
-
 @keyframes pulse {
   0% { r: 12; opacity: 1; }
   50% { r: 18; opacity: 0.3; }
   100% { r: 12; opacity: 1; }
 }
-
 .circle-pulse {
   animation: pulse 2s infinite;
 }
