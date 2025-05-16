@@ -1,53 +1,83 @@
-<!-- Sidebar.vue -->
 <template>
-  <div class="w-full h-full space-y-4">
+  <div class="w-full h-full">
     <!-- Error banner -->
-    <div v-if="error" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-xl" role="alert">
+    <div
+      v-if="error"
+      class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-xl mb-4"
+      role="alert"
+    >
       <span class="block sm:inline">{{ error }}</span>
     </div>
 
     <!-- Initial loader -->
-    <div v-if="loading" class="bg-white border border-slate-300 rounded-xl shadow p-4 w-full">
+    <div
+      v-if="loading"
+      class="bg-white border border-slate-300 rounded-xl shadow p-4 w-full mb-4"
+    >
       <p class="text-gray-500">Loading statistics...</p>
     </div>
 
-    <!-- Stats & countdown -->
-    <template v-else>
-      <SidebarBlock title="Network Health">
-        <span :class="healthClass">{{ stats.network_health }}</span>
-      </SidebarBlock>
-      <SidebarBlock title="Total Devices">
-        {{ stats.total_devices }}
-      </SidebarBlock>
-      <SidebarBlock title="Currently Online">
-        {{ stats.current_online_devices }}
-      </SidebarBlock>
-      <SidebarBlock title="Average Latency">
-        <span :class="latencyClass">{{ stats.average_latency }}</span>
-      </SidebarBlock>
-      <SidebarBlock title="Active Alerts">
-        <span :class="alertClass">{{ stats.active_alerts }}</span>
-      </SidebarBlock>
-      <SidebarBlock title="Next Update">
-        {{ countdown }}s
-      </SidebarBlock>
-    </template>
+    <!-- Draggable stats blocks -->
+    <draggable
+      v-else
+      v-model="blocks"
+      item-key="key"
+      animation="150"
+      class="space-y-4"
+    >
+      <template #item="{ element }">
+        <SidebarBlock :title="element.title">
+          <div class="flex items-center cursor-move">
+            <!-- content -->
+            <div class="flex-1">
+              <template v-if="element.key === 'health'">
+                <span :class="healthClass">{{ stats.network_health }}</span>
+              </template>
+              <template v-else-if="element.key === 'total'">
+                {{ stats.total_devices }}
+              </template>
+              <template v-else-if="element.key === 'online'">
+                {{ stats.current_online_devices }}
+              </template>
+              <template v-else-if="element.key === 'latency'">
+                <span :class="latencyClass">{{ stats.average_latency }}</span>
+              </template>
+              <template v-else-if="element.key === 'alerts'">
+                <span :class="alertClass">{{ stats.active_alerts }}</span>
+              </template>
+              <template v-else-if="element.key === 'next'">
+                {{ countdown }}s
+              </template>
+            </div>
+          </div>
+        </SidebarBlock>
+      </template>
+    </draggable>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
+import draggable from 'vuedraggable'
 import SidebarBlock from '~/components/SidebarBlock.vue'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-// reactive state
-const stats    = ref({})
-const loading  = ref(true)
-const error    = ref(null)
+const stats     = ref({})
+const loading   = ref(true)
+const error     = ref(null)
 const countdown = ref(0)
 
-// timers
+// define your blocks in initial order
+const blocks = ref([
+  { key: 'health', title: 'Network Health' },
+  { key: 'total',  title: 'Total Devices' },
+  { key: 'online', title: 'Currently Online' },
+  { key: 'latency',title: 'Average Latency' },
+  { key: 'alerts', title: 'Active Alerts' },
+  { key: 'next',   title: 'Next Update' },
+])
+
 let refreshTimer = null
 let tickTimer    = null
 
@@ -64,11 +94,9 @@ async function fetchStats(showLoading = false) {
   } finally {
     if (showLoading) loading.value = false
 
-    // parse next_update ("10s") into seconds
     const secs = parseInt(stats.value.next_update) || 10
     countdown.value = secs
 
-    // schedule next silent refresh
     clearTimeout(refreshTimer)
     refreshTimer = setTimeout(() => fetchStats(false), secs * 1000)
   }
@@ -81,9 +109,7 @@ function startCountdown() {
 }
 
 onMounted(() => {
-  // initial load shows loader
   fetchStats(true)
-  // start the 1s countdown ticker
   startCountdown()
 })
 
@@ -92,7 +118,6 @@ onUnmounted(() => {
   clearInterval(tickTimer)
 })
 
-// computed CSS classes
 const healthClass = computed(() => {
   switch (stats.value.network_health) {
     case 'Excellent': return 'text-green-600'
@@ -123,3 +148,7 @@ const alertClass = computed(() => {
   return 'text-yellow-600'
 })
 </script>
+
+<style scoped>
+/* keep original styling */
+</style>
