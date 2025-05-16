@@ -1,4 +1,3 @@
-# NetView/backend/app/api/routes.py
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 from backend.app.services.network_monitor import get_network_stats, discover_devices
@@ -8,13 +7,16 @@ router = APIRouter()
 
 @router.get("/stats")
 def fetch_stats():
-    stats = get_network_stats()
-    return stats
+    # 1) Trigger a fresh scan right now
+    discover_devices()
+    # 2) Return up-to-date stats (including next_update)
+    return get_network_stats()
 
 
 @router.get("/topology")
 async def get_topology():
-    return await run_in_threadpool(generate_topology)
+    # Always recompute topology from the latest scan
+    return await run_in_threadpool(lambda: generate_topology())
 
 
 @router.get("/debug/devices")
@@ -25,16 +27,16 @@ async def get_all_devices_debug():
 
 def generate_topology():
     """
-    Build a D3-friendly topology where each node knows its online status.
+    Build a D3-friendly topology where each node carries its 'online' flag.
     """
     devices = discover_devices()
     gateway_ip = devices[0]["ip"] if devices else "192.168.1.1"
 
     nodes = [
         {
-            "id":   d["ip"],
-            "label": d["ip"],
-            "online": bool(d["online"])
+            "id":     d["ip"],
+            "label":  d["ip"],
+            "online": bool(d["online"]),
         }
         for d in devices
     ]
