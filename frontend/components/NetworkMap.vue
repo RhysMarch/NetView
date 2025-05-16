@@ -1,7 +1,6 @@
 <!-- NetworkMap.vue -->
 <template>
   <div class="relative h-full">
-    <!-- Graph container -->
     <div
       class="bg-white rounded-xl border border-gray-300 shadow h-full"
       ref="graphContainer"
@@ -10,7 +9,7 @@
     <!-- Node detail panel -->
     <div
       v-if="selectedNode"
-      class="absolute top-4 right-4 bg-white border border-gray-300 rounded-xl shadow p-4 w-64"
+      class="absolute top-4 right-4 bg-white border border-gray-300 rounded-xl shadow p-4 w-64 z-10"
     >
       <!-- Editable title -->
       <div class="flex items-center mb-2">
@@ -51,7 +50,6 @@
         </template>
       </div>
 
-      <!-- Device details -->
       <p class="text-sm"><strong>IP:</strong> {{ selectedNode.id }}</p>
       <p class="mt-1 text-sm">
         <strong>Status: </strong>
@@ -61,13 +59,18 @@
       </p>
       <p class="mt-1 text-sm"><strong>MAC:</strong> {{ selectedNode.mac || 'Unknown' }}</p>
 
-      <!-- Close button -->
       <button
         class="mt-4 px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-sm"
         @click="closePanel"
       >
         Close
       </button>
+    </div>
+
+    <!-- Legend -->
+    <div class="absolute bottom-4 left-4 bg-white p-2 rounded shadow text-xs z-10">
+      <div><span class="inline-block w-3 h-3 rounded-full bg-emerald-500 mr-1"></span> Online</div>
+      <div><span class="inline-block w-3 h-3 rounded-full bg-slate-400 mr-1"></span> Offline</div>
     </div>
   </div>
 </template>
@@ -96,8 +99,7 @@ async function fetchTopology() {
 
 function renderGraph({ nodes, links }) {
   const container = graphContainer.value
-  d3.select(container).selectAll('svg').remove()
-
+  d3.select(container).selectAll('*').remove()
   const width = container.clientWidth
   const height = container.clientHeight
 
@@ -109,68 +111,94 @@ function renderGraph({ nodes, links }) {
     }
   })
 
-  const svg = d3
-    .select(container)
-    .append('svg')
+  const svg = d3.select(container).append('svg')
     .attr('width', width)
     .attr('height', height)
 
-  simulation = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(links).id(d => d.id).distance(200))
-    .force('charge', d3.forceManyBody().strength(-800))
-    .force('center', d3.forceCenter(width / 2, height / 2))
-    .force('collide', d3.forceCollide().radius(25))
-    .on('tick', onTick)
-
-  svg.append('g')
-    .attr('stroke', '#ccc')
+  const link = svg.append('g')
+    .attr('stroke', '#cbd5e1')
     .selectAll('line')
     .data(links)
     .join('line')
     .attr('stroke-width', 2)
 
-  svg.append('g')
-    .attr('stroke', '#fff')
+  const nodeGroup = svg.append('g')
+    .attr('stroke', '#e5e7eb')
+    .attr('stroke-width', 2)
     .selectAll('circle')
-    .data(nodes, d => d.id)
+    .data(nodes)
     .join('circle')
-      .attr('r', 12)
-      .attr('fill', d => (d.online ? '#10b981' : '#94a3b8')) // emerald-500 and slate-400
-      .style('cursor', 'pointer')
-      .on('click', (_, d) => {
-        selectedNode.value = d
-        editing.value = false
-        newName.value = d.label
-      })
-      .call(d3.drag()
-        .on('start', dragstarted)
-        .on('drag', dragged)
-        .on('end', dragended)
-      )
+    .attr('r', d => d.is_gateway ? 20 : 12)
+    .attr('fill', d => d.is_gateway ? '#0ea5e9' : d.online ? '#10b981' : '#94a3b8')
+    .style('cursor', 'pointer')
+    .style('filter', 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1))')
+    .on('mouseover', function () {
+      d3.select(this).attr('stroke', '#0ea5e9')
+    })
+    .on('mouseout', function () {
+      d3.select(this).attr('stroke', '#e5e7eb')
+    })
+    .on('click', (_, d) => {
+      selectedNode.value = d
+      editing.value = false
+      newName.value = d.label
+    })
+    .call(d3.drag()
+      .on('start', dragstarted)
+      .on('drag', dragged)
+      .on('end', dragended)
+    )
 
-  svg.append('g')
-    .selectAll('text')
-    .data(nodes, d => d.id)
-    .join('text')
+  const labels = svg.append('g')
+    .selectAll('g')
+    .data(nodes)
+    .join('g')
+    .attr('class', 'label-group')
+
+  labels.append('rect')
+    .attr('x', 0)
+    .attr('y', -10)
+    .attr('rx', 3)
+    .attr('ry', 3)
+    .attr('fill', 'white')
+    .attr('opacity', 0.8)
+
+  labels.append('text')
     .text(d => d.label)
-    .attr('font-size', '0.8rem')
-    .attr('fill', '#333')
+    .attr('font-size', '0.75rem')
+    .attr('fill', '#111')
+    .attr('x', 4)
+    .attr('y', 0)
 
-  function onTick() {
-    svg.selectAll('line')
+  simulation = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(d => d.id).distance(200))
+    .force('charge', d3.forceManyBody().strength(-800))
+    .force('center', d3.forceCenter(width / 2, height / 2))
+    .force('collide', d3.forceCollide().radius(30))
+    .on('tick', ticked)
+
+  function ticked() {
+    link
       .attr('x1', d => d.source.x)
       .attr('y1', d => d.source.y)
       .attr('x2', d => d.target.x)
       .attr('y2', d => d.target.y)
 
-    svg.selectAll('circle')
+    nodeGroup
       .attr('cx', d => d.x)
       .attr('cy', d => d.y)
       .each(d => positions.set(d.id, { x: d.x, y: d.y }))
 
-    svg.selectAll('text')
-      .attr('x', d => d.x + 15)
-      .attr('y', d => d.y + 5)
+    labels.attr('transform', d => `translate(${d.x + 15}, ${d.y + 5})`)
+    labels.selectAll('rect').each(function(_, i) {
+      const textEl = this.nextSibling
+      if (textEl && textEl.getBBox) {
+        const { width, height } = textEl.getBBox()
+        d3.select(this)
+          .attr('width', width + 8)
+          .attr('height', height + 4)
+      }
+    })
   }
 
   function dragstarted(event, d) {
@@ -193,16 +221,6 @@ async function updateGraph() {
   try {
     const topo = await fetchTopology()
     renderGraph(topo)
-
-    if (selectedNode.value) {
-      const fresh = topo.nodes.find(n => n.id === selectedNode.value.id)
-      if (fresh) {
-        selectedNode.value = fresh
-        if (!editing.value) newName.value = fresh.label
-      } else {
-        selectedNode.value = null
-      }
-    }
   } catch (e) {
     console.error('Failed to fetch topology:', e)
   } finally {
@@ -258,5 +276,26 @@ svg {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.tooltip {
+  position: absolute;
+  background: white;
+  border: 1px solid #ccc;
+  padding: 4px 8px;
+  border-radius: 6px;
+  pointer-events: none;
+  font-size: 0.75rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+@keyframes pulse {
+  0% { r: 12; opacity: 1; }
+  50% { r: 18; opacity: 0.3; }
+  100% { r: 12; opacity: 1; }
+}
+
+.circle-pulse {
+  animation: pulse 2s infinite;
 }
 </style>
