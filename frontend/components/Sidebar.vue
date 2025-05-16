@@ -1,3 +1,4 @@
+<!-- Sidebar.vue -->
 <template>
   <div class="w-full h-full space-y-4">
     <!-- Error banner -->

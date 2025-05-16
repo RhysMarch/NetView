@@ -1,3 +1,4 @@
+<!-- NetworkMap.vue -->
 <template>
   <div
     class="bg-white rounded-xl border border-gray-300 shadow h-full relative"
