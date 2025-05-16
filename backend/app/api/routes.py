@@ -24,9 +24,24 @@ async def get_all_devices_debug():
 
 
 def generate_topology():
+    """
+    Build a D3-friendly topology where each node knows its online status.
+    """
     devices = discover_devices()
-    gateway_ip = devices[0]['ip'] if devices else "192.168.1.1"
-    nodes = [{"id": d["ip"], "label": d["ip"]} for d in devices]
-    links = [{"source": gateway_ip, "target": d["ip"]} for d in devices]
-    return {"nodes": nodes, "links": links}
+    gateway_ip = devices[0]["ip"] if devices else "192.168.1.1"
 
+    nodes = [
+        {
+            "id":   d["ip"],
+            "label": d["ip"],
+            "online": bool(d["online"])
+        }
+        for d in devices
+    ]
+
+    links = [
+        {"source": gateway_ip, "target": d["ip"]}
+        for d in devices
+    ]
+
+    return {"nodes": nodes, "links": links}
