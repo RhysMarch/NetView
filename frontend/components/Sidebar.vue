@@ -37,7 +37,7 @@
             <!-- Alerts header: title + download icon on the right -->
             <div
               v-if="element.key === 'alerts'"
-              class="flex items-center justify-between mb-6"
+              class="flex items-center justify-between mb-4"
             >
               <span class="font-semibold">Alerts</span>
               <svg
@@ -84,7 +84,7 @@
                 <li
                   v-for="a in alerts"
                   :key="a.id"
-                  class="flex items-center justify-between py-2"
+                  class="flex items-center justify-between border-b border-gray-200 pl-2 py-2"
                 >
                   <div class="flex-1 pr-2">
                     <p class="text-sm text-gray-800">{{ a.message }}</p>
