@@ -108,6 +108,7 @@ import * as d3 from 'd3'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const REFRESH_INTERVAL = 10 // seconds
+const previousStates = new Map()
 
 let timerId
 let countdownTimer
@@ -136,13 +137,15 @@ function renderGraph({ nodes, links }) {
   const width = container.clientWidth
   const height = container.clientHeight
 
-  nodes.forEach(node => {
-    const prev = positions.get(node.id)
-    if (prev) {
-      node.x = prev.x
-      node.y = prev.y
+  // Detect state changes
+  const changedIds = new Set()
+  for (const node of nodes) {
+    const prevOnline = previousStates.get(node.id)
+    if (prevOnline !== undefined && prevOnline !== node.online) {
+      changedIds.add(node.id)
     }
-  })
+    previousStates.set(node.id, node.online)
+  }
 
   const svg = d3.select(container).append('svg')
     .attr('viewBox', `0 0 ${width} ${height}`)
@@ -180,6 +183,43 @@ function renderGraph({ nodes, links }) {
       .on('drag',  dragged)
       .on('end',   dragended)
     )
+
+    const pulses = 5           // Number of pulse cycles (how many times the node will pulse)
+    const pulseInDur = 400     // Duration of the outward pulse (thicker stroke) in ms
+    const pulseOutDur = 500    // Duration of the inward pulse (return to normal stroke) in ms
+    const pauseDur = 200       // Pause between each pulse cycle in ms
+    const baseStroke = 2       // Default stroke width for nodes
+    const thickStroke = 8      // Stroke width used during pulse to emphasize the change
+
+
+    changedIds.forEach(id => {
+      const sel = zoomGroup
+        .selectAll('circle')
+        .filter(d => d.id === id)
+
+      let t0 = 0
+      for (let i = 0; i < pulses; i++) {
+        // pulse out
+        sel.transition()
+          .delay(t0)
+          .duration(pulseInDur)
+          .attr('stroke-width', thickStroke)
+          .attr('stroke', d => d.online ? '#10b981' : '#94a3b8')
+          .ease(d3.easeQuadOut)
+
+        t0 += pulseInDur
+
+        // pulse in
+        sel.transition()
+          .delay(t0)
+          .duration(pulseOutDur)
+          .attr('stroke-width', baseStroke)
+          .attr('stroke', '#e5e7eb')
+          .ease(d3.easeQuadIn)
+
+        t0 += pulseOutDur + pauseDur
+      }
+    })
 
   const labels = zoomGroup.append('g')
     .selectAll('g')
