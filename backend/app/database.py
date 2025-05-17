@@ -116,24 +116,43 @@ def rename_device(mac: str, new_name: str):
 
 def add_alert(type: str, mac: str, ip: str, message: str):
     now = datetime.datetime.now(datetime.timezone.utc)
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+
+    # Check for similar recent alert in the last 5 seconds
+    cursor.execute("""
+        SELECT 1 FROM alerts
+        WHERE type = ?
+          AND mac = ?
+          AND message = ?
+          AND timestamp > datetime(?, '-5 seconds')
+        LIMIT 1
+    """, (type, mac, message, now.isoformat()))
+
+    if cursor.fetchone():
+        conn.close()
+        return  # Skip inserting duplicate alert
+
+    # Insert the new alert
     cursor.execute("""
         INSERT INTO alerts (type, mac, ip, timestamp, message)
         VALUES (?, ?, ?, ?, ?)
     """, (type, mac, ip, now, message))
 
-    # now delete any older alerts beyond the 100 most recent
+    # Retain only the most recent 100 alerts
     cursor.execute("""
         DELETE FROM alerts
-         WHERE id NOT IN (
-           SELECT id FROM alerts
-           ORDER BY timestamp DESC
-           LIMIT 100
-         )
+        WHERE id NOT IN (
+            SELECT id FROM alerts
+            ORDER BY timestamp DESC
+            LIMIT 100
+        )
     """)
+
     conn.commit()
     conn.close()
+
 
 
 def get_alerts():
