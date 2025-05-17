@@ -147,23 +147,30 @@ function renderGraph({ nodes, links }) {
     .attr('stroke-width', 2)
 
   const nodeGroup = zoomGroup.append('g')
-    .attr('stroke', '#e5e7eb')
-    .attr('stroke-width', 2)
-    .selectAll('circle')
-    .data(nodes)
-    .join('circle')
-    .attr('r', d => d.is_gateway ? 20 : 12)
-    .attr('fill', d => d.is_gateway ? '#0ea5e9' : d.online ? '#10b981' : '#94a3b8')
+  .attr('stroke', '#e5e7eb')
+  .attr('stroke-width', 2)
+  .selectAll('circle')
+  .data(nodes)
+  .join('circle')
+    .attr('r', d => d.is_gateway ? 20 : 12)                      // larger for gateway
+    .attr('fill', d => d.is_gateway ? '#10b981'                  // blue for gateway
+                   : d.online   ? '#10b981'                     // green if online
+                                : '#94a3b8')                    // grey if offline
+    .classed('circle-pulse', d => d.is_gateway)                 // pulse animation for gateway
     .style('cursor', 'pointer')
     .style('filter', 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1))')
-    .on('mouseover', function () { d3.select(this).attr('stroke', '#0ea5e9') })
-    .on('mouseout', function () { d3.select(this).attr('stroke', '#e5e7eb') })
+    .on('mouseover', function() { d3.select(this).attr('stroke', '#0ea5e9') })
+    .on('mouseout',  function() { d3.select(this).attr('stroke', '#e5e7eb') })
     .on('click', (_, d) => {
       selectedNode.value = d
       editing.value = false
       newName.value = d.label
     })
-    .call(d3.drag().on('start', dragstarted).on('drag', dragged).on('end', dragended))
+    .call(d3.drag()
+      .on('start', dragstarted)
+      .on('drag',  dragged)
+      .on('end',   dragended)
+    );
 
   const labels = zoomGroup.append('g')
     .selectAll('g')
@@ -190,7 +197,7 @@ function renderGraph({ nodes, links }) {
     .force('link', d3.forceLink(links).id(d => d.id).distance(200))
     .force('charge', d3.forceManyBody().strength(-800))
     .force('center', d3.forceCenter(width / 2, height / 2))
-    .force('collide', d3.forceCollide().radius(40))
+    .force('collide', d3.forceCollide().radius(45))
     .on('tick', ticked)
 
   function ticked() {
@@ -206,7 +213,7 @@ function renderGraph({ nodes, links }) {
       .each(d => positions.set(d.id, { x: d.x, y: d.y }))
 
     labels.attr('transform', d => `translate(${d.x + 15}, ${d.y + 5})`)
-    labels.selectAll('rect').each(function (_, i) {
+    labels.selectAll('rect').each(function (_) {
       const textEl = this.nextSibling
       if (textEl && textEl.getBBox) {
         const { width, height } = textEl.getBBox()
@@ -327,13 +334,5 @@ svg {
   pointer-events: none;
   font-size: 0.75rem;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
-}
-@keyframes pulse {
-  0% { r: 12; opacity: 1; }
-  50% { r: 18; opacity: 0.3; }
-  100% { r: 12; opacity: 1; }
-}
-.circle-pulse {
-  animation: pulse 2s infinite;
 }
 </style>
