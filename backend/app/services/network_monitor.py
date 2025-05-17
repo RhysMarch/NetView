@@ -1,3 +1,5 @@
+# backend/app/services/network_monitor.py
+
 import time
 import psutil
 import socket
@@ -15,6 +17,10 @@ from backend.app.database import (
 from backend.app.config import SYNC_INTERVAL_SECONDS
 
 _last_scan_time = 0
+
+
+def normalize_mac(mac: str) -> str:
+    return mac.lower()
 
 
 def get_default_gateway_subnet() -> str | None:
@@ -35,38 +41,60 @@ def get_default_gateway_subnet() -> str | None:
 def discover_devices():
     global _last_scan_time
 
-    # snapshot before
-    before = {d["mac"]: d for d in get_all_devices() if d["online"]}
+    # 1) Snapshot of every device in the DB (with its last 'online' state)
+    all_devices = get_all_devices()
+    devices_by_mac = { normalize_mac(d["mac"]): d for d in all_devices }
+    online_before = { mac for mac, d in devices_by_mac.items() if d["online"] }
 
+    # 2) ARP scan of the subnet
     subnet = get_default_gateway_subnet()
     if not subnet:
-        return get_all_devices()
+        return all_devices
 
-    answered = srp(Ether(dst="ff:ff:ff:ff:ff:ff")/ARP(pdst=subnet),
-                   timeout=2, verbose=False)[0]
+    answered = srp(
+        Ether(dst="ff:ff:ff:ff:ff:ff")/ARP(pdst=subnet),
+        timeout=2,
+        verbose=False
+    )[0]
 
     seen = set()
     for _, pkt in answered:
-        mac = pkt.hwsrc
-        ip = pkt.psrc
+        raw_mac = pkt.hwsrc
+        mac     = normalize_mac(raw_mac)
+        ip      = pkt.psrc
         seen.add(mac)
 
-        if mac not in before:
+        # look up any custom name
+        device = devices_by_mac.get(mac, {})
+        label = device.get("name") or ip
+
+        if mac not in devices_by_mac:
+            # brand-new device
             add_alert(
                 "new_device", mac, ip,
-                f"New device detected: {mac} @ {ip}"
+                f"New device detected: {mac} @ {label}"
+            )
+        elif mac not in online_before:
+            # existed, but was offline — now back online
+            add_alert(
+                "device_back_online", mac, ip,
+                f"Device back online: {mac} @ {label}"
             )
 
+        # upsert (marks it online and updates timestamps)
         upsert_device(mac, ip)
 
+    # 3) Mark all not-seen devices as offline
     mark_offline(seen)
 
-    went_offline = set(before) - seen
+    # 4) Fire “went offline” alerts for those that dropped out
+    went_offline = online_before - seen
     for mac in went_offline:
-        old = before[mac]
+        old = devices_by_mac[mac]
+        label = old.get("name") or old["ip"]
         add_alert(
             "device_offline", mac, old["ip"],
-            f"Device went offline: {mac} @ {old['ip']}"
+            f"Device went offline: {mac} @ {label}"
         )
 
     _last_scan_time = time.time()
@@ -112,12 +140,12 @@ def get_network_stats():
         network_health = "Poor"
 
     return {
-        "network_health":        network_health,
-        "total_devices":         len(all_devices),
+        "network_health":         network_health,
+        "total_devices":          len(all_devices),
         "current_online_devices": current_online,
-        "average_latency":       latency,
-        "active_alerts":         0 if network_health in ["Excellent", "Good"] else 1,
-        "next_update":           f"{SYNC_INTERVAL_SECONDS}s",
-        "bytes_sent":            io.bytes_sent,
-        "bytes_recv":            io.bytes_recv,
+        "average_latency":        latency,
+        "active_alerts":          0 if network_health in ["Excellent", "Good"] else 1,
+        "next_update":            f"{SYNC_INTERVAL_SECONDS}s",
+        "bytes_sent":             io.bytes_sent,
+        "bytes_recv":             io.bytes_recv,
     }

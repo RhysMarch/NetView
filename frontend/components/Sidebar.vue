@@ -1,5 +1,5 @@
 <template>
-  <div class="w-full h-full">
+  <div class="w-full h-full flex flex-col">
     <!-- Error banner -->
     <div
       v-if="error"
@@ -23,16 +23,18 @@
       v-model="blocks"
       item-key="key"
       animation="150"
-      class="space-y-4"
+      class="flex flex-col flex-grow space-y-4 overflow-hidden"
     >
       <template #item="{ element }">
-        <SidebarBlock :title="element.title">
-          <div class="flex flex-col">
+        <SidebarBlock
+          :title="element.title"
+          :class="element.key === 'alerts'
+            ? 'flex flex-col flex-grow min-h-0'
+            : 'flex-none'"
+        >
+          <div class="flex flex-col h-full min-h-0">
             <!-- main line -->
-            <div
-              class="flex items-center justify-between cursor-move"
-              @click="element.key === 'alerts' && toggleAlerts()"
-            >
+            <div class="flex items-center justify-between cursor-move">
               <div class="flex-1">
                 <template v-if="element.key === 'health'">
                   <span :class="healthClass">{{ stats.network_health }}</span>
@@ -46,30 +48,93 @@
                 <template v-else-if="element.key === 'latency'">
                   <span :class="latencyClass">{{ stats.average_latency }}</span>
                 </template>
-                <template v-else-if="element.key === 'alerts'">
-                  <span :class="alertClass">{{ stats.active_alerts }}</span>
-                  <span class="ml-1 text-xs text-gray-500">
-                    (click to {{ showAlerts ? 'hide' : 'show' }})
-                  </span>
-                </template>
               </div>
             </div>
 
-            <!-- Inline alerts list, capped smaller with scroll -->
-            <ul
-              v-if="element.key === 'alerts' && showAlerts"
-              class="mt-2 ml-4 list-disc text-sm space-y-1 overflow-y-auto max-h-32"
-            >
-              <li v-for="a in alerts" :key="a.id">
-                {{ a.message }}
-                <span class="text-xs text-gray-400">
-                  ({{ formatTimestamp(a.timestamp) }})
-                </span>
-              </li>
-              <li v-if="alerts.length === 0" class="text-gray-500">
-                No alerts
-              </li>
-            </ul>
+            <!-- Always-visible alerts list with scroll -->
+            <template v-if="element.key === 'alerts'">
+              <ul
+                class="list-none overflow-y-auto max-h-[35vh] pr-6"
+                role="list"
+                aria-label="Active alerts"
+              >
+                <li
+                  v-for="a in alerts"
+                  :key="a.id"
+                  class="flex items-center justify-between py-2"
+                >
+                  <!-- left: message + timestamp -->
+                  <div class="flex-1 pr-2">
+                    <p class="text-sm text-gray-800">
+                      {{ a.message }}
+                    </p>
+                    <p class="mt-1 text-xs text-gray-500">
+                      {{ formatTimestamp(a.timestamp) }}
+                    </p>
+                  </div>
+
+                  <!-- right: icon, vertically centered -->
+                  <div class="flex-shrink-0 flex items-center">
+                    <!-- brand-new device -->
+                    <svg
+                      v-if="a.type === 'new_device'"
+                      class="h-5 w-5 text-green-500"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fill-rule="evenodd"
+                        d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
+                        clip-rule="evenodd"
+                      />
+                    </svg>
+
+                   <!-- device back online -->
+                    <svg
+                      v-else-if="a.type === 'device_back_online'"
+                      class="h-5 w-5 text-emerald-500"
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <circle cx="10" cy="10" r="8" />
+                    </svg>
+
+                    <!-- device went offline -->
+                    <svg
+                      v-else-if="a.type === 'device_offline'"
+                      class="h-5 w-5 text-slate-400"
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <circle cx="10" cy="10" r="8" />
+                    </svg>
+
+                    <!-- fallback warning -->
+                    <svg
+                      v-else
+                      class="h-5 w-5 text-yellow-500"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fill-rule="evenodd"
+                        d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.516 9.811c.75 1.334-.213 2.99-1.742 2.99H4.483c-1.528 0-2.492-1.656-1.742-2.99L8.257 3.1zM11 12a1 1 0 10-2 0 1 1 0 002 0zm-1-4a1 1 0 00-.993.883L9 9v2a1 1 0 001.993.117L11 11V9a1 1 0 00-1-1z"
+                        clip-rule="evenodd"
+                      />
+                    </svg>
+                  </div>
+                </li>
+
+                <li
+                  v-if="alerts.length === 0"
+                  class="py-2 text-center text-gray-500"
+                >
+                  No alerts
+                </li>
+              </ul>
+            </template>
           </div>
         </SidebarBlock>
       </template>
@@ -88,14 +153,13 @@ const alerts    = ref([])
 const loading   = ref(true)
 const error     = ref(null)
 const countdown = ref(0)
-const showAlerts = ref(false)
 
 const blocks = ref([
   { key: 'health', title: 'Network Health' },
   { key: 'total',  title: 'Total Devices' },
   { key: 'online', title: 'Currently Online' },
   { key: 'latency',title: 'Average Latency' },
-  { key: 'alerts', title: 'Active Alerts' },
+  { key: 'alerts', title: 'Alerts' },
 ])
 
 let refreshTimer = null
@@ -116,6 +180,7 @@ async function fetchStats(showLoading = false) {
     countdown.value = secs
     clearTimeout(refreshTimer)
     refreshTimer = setTimeout(() => fetchStats(false), secs * 1000)
+    fetchAlerts()
   }
 }
 
@@ -130,11 +195,6 @@ async function fetchAlerts() {
   }
 }
 
-function toggleAlerts() {
-  showAlerts.value = !showAlerts.value
-  if (showAlerts.value) fetchAlerts()
-}
-
 function startCountdown() {
   tickTimer = setInterval(() => {
     if (countdown.value > 0) countdown.value--
@@ -143,6 +203,7 @@ function startCountdown() {
 
 onMounted(() => {
   fetchStats(true)
+  fetchAlerts()
   startCountdown()
 })
 
@@ -171,8 +232,12 @@ const latencyClass = computed(() => {
   return 'text-red-600'
 })
 
+// compute real number of alerts
+const activeAlertCount = computed(() => alerts.value.length)
+
+// update class logic based on real alert count
 const alertClass = computed(() => {
-  const a = stats.value.active_alerts || 0
+  const a = alerts.value.length
   const t = stats.value.current_online_devices || 1
   if (a === 0) return 'text-green-600'
   const ratio = a / t
@@ -181,7 +246,6 @@ const alertClass = computed(() => {
   return 'text-yellow-600'
 })
 
-// helper to format ISO timestamp strings nicely
 function formatTimestamp(ts) {
   try {
     return new Date(ts).toLocaleString()

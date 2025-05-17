@@ -115,7 +115,6 @@ def rename_device(mac: str, new_name: str):
 # alerts helpers
 
 def add_alert(type: str, mac: str, ip: str, message: str):
-    # use timezone-aware UTC now
     now = datetime.datetime.now(datetime.timezone.utc)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -123,6 +122,16 @@ def add_alert(type: str, mac: str, ip: str, message: str):
         INSERT INTO alerts (type, mac, ip, timestamp, message)
         VALUES (?, ?, ?, ?, ?)
     """, (type, mac, ip, now, message))
+
+    # now delete any older alerts beyond the 100 most recent
+    cursor.execute("""
+        DELETE FROM alerts
+         WHERE id NOT IN (
+           SELECT id FROM alerts
+           ORDER BY timestamp DESC
+           LIMIT 100
+         )
+    """)
     conn.commit()
     conn.close()
 
@@ -134,7 +143,6 @@ def get_alerts():
         SELECT id, type, mac, ip, timestamp, message
         FROM alerts
         ORDER BY timestamp DESC
-        LIMIT 50
     """)
     rows = cursor.fetchall()
     conn.close()
