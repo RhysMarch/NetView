@@ -16,6 +16,7 @@ from backend.app.database import (
 )
 from backend.app.config import SYNC_INTERVAL_SECONDS
 
+_last_devices_snapshot = []
 _last_scan_time = 0
 
 
@@ -38,21 +39,29 @@ def get_default_gateway_subnet() -> str | None:
     return None
 
 
-def discover_devices():
-    global _last_scan_time
+def discover_devices_once():
+    """Run discovery if last scan is stale, otherwise return cached snapshot."""
+    global _last_devices_snapshot, _last_scan_time
+    now = time.time()
+    if now - _last_scan_time < SYNC_INTERVAL_SECONDS:
+        return _last_devices_snapshot
 
-    # 1) Snapshot of every device in the DB (with its last 'online' state)
+    _last_devices_snapshot = _discover_and_update()
+    _last_scan_time = now
+    return _last_devices_snapshot
+
+
+def _discover_and_update():
     all_devices = get_all_devices()
-    devices_by_mac = { normalize_mac(d["mac"]): d for d in all_devices }
-    online_before = { mac for mac, d in devices_by_mac.items() if d["online"] }
+    devices_by_mac = {normalize_mac(d["mac"]): d for d in all_devices}
+    online_before = {mac for mac, d in devices_by_mac.items() if d["online"]}
 
-    # 2) ARP scan of the subnet
     subnet = get_default_gateway_subnet()
     if not subnet:
         return all_devices
 
     answered = srp(
-        Ether(dst="ff:ff:ff:ff:ff:ff")/ARP(pdst=subnet),
+        Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=subnet),
         timeout=2,
         verbose=False
     )[0]
@@ -60,44 +69,28 @@ def discover_devices():
     seen = set()
     for _, pkt in answered:
         raw_mac = pkt.hwsrc
-        mac     = normalize_mac(raw_mac)
-        ip      = pkt.psrc
+        mac = normalize_mac(raw_mac)
+        ip = pkt.psrc
         seen.add(mac)
 
-        # look up any custom name
         device = devices_by_mac.get(mac, {})
         label = device.get("name") or ip
 
         if mac not in devices_by_mac:
-            # brand-new device
-            add_alert(
-                "new_device", mac, ip,
-                f"New device detected: {mac} @ {label}"
-            )
+            add_alert("new_device", mac, ip, f"New device detected: {mac} @ {label}")
         elif mac not in online_before:
-            # existed, but was offline — now back online
-            add_alert(
-                "device_back_online", mac, ip,
-                f"Device back online: {mac} @ {label}"
-            )
+            add_alert("device_back_online", mac, ip, f"Device back online: {mac} @ {label}")
 
-        # upsert (marks it online and updates timestamps)
         upsert_device(mac, ip)
 
-    # 3) Mark all not-seen devices as offline
     mark_offline(seen)
 
-    # 4) Fire “went offline” alerts for those that dropped out
     went_offline = online_before - seen
     for mac in went_offline:
         old = devices_by_mac[mac]
         label = old.get("name") or old["ip"]
-        add_alert(
-            "device_offline", mac, old["ip"],
-            f"Device went offline: {mac} @ {label}"
-        )
+        add_alert("device_offline", mac, old["ip"], f"Device went offline: {mac} @ {label}")
 
-    _last_scan_time = time.time()
     return get_all_devices()
 
 
@@ -106,15 +99,13 @@ def measure_latency(target="8.8.8.8") -> str:
     return f"{int(delay)}ms" if delay else "timeout"
 
 
-def get_network_stats():
-    all_devices = get_all_devices()
-    online = [d for d in all_devices if d["online"]]
+def get_network_stats(devices):
+    online = [d for d in devices if d["online"]]
     io = psutil.net_io_counters()
-
-    # existing health logic...
     current_online = len(online)
     latency = measure_latency()
 
+    # Health scoring logic
     health_score = 100
     if latency == "timeout":
         health_score -= 50
@@ -141,7 +132,7 @@ def get_network_stats():
 
     return {
         "network_health":         network_health,
-        "total_devices":          len(all_devices),
+        "total_devices":          len(devices),
         "current_online_devices": current_online,
         "average_latency":        latency,
         "active_alerts":          0 if network_health in ["Excellent", "Good"] else 1,

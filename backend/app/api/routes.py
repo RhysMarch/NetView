@@ -1,10 +1,19 @@
+# backend/app/api/routes.py
+
 import socket
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
-from backend.app.services.network_monitor import get_network_stats, discover_devices
-from backend.app.database import get_all_devices, rename_device, get_alerts
+from backend.app.services.network_monitor import (
+    discover_devices_once,
+    get_network_stats,
+)
+from backend.app.database import (
+    get_all_devices,
+    rename_device,
+    get_alerts,
+)
 
 router = APIRouter()
 
@@ -20,13 +29,14 @@ def get_local_ip() -> str:
 
 @router.get("/stats")
 def fetch_stats():
-    discover_devices()
-    return get_network_stats()
+    devices = discover_devices_once()
+    return get_network_stats(devices)
 
 
 @router.get("/topology")
 async def get_topology():
-    return await run_in_threadpool(lambda: generate_topology())
+    devices = await run_in_threadpool(discover_devices_once)
+    return generate_topology(devices)
 
 
 @router.get("/debug/devices")
@@ -52,8 +62,7 @@ async def api_rename_device(mac: str, req: RenameRequest):
     return {"mac": mac.lower(), "name": req.name}
 
 
-def generate_topology():
-    devices = discover_devices()
+def generate_topology(devices):
     local_ip = get_local_ip()
 
     nodes = [
