@@ -1,6 +1,14 @@
 <!-- NetworkMap.vue -->
 <template>
   <div class="relative h-full">
+    <!-- Next-update countdown badge -->
+    <div
+      class="absolute top-4 left-4 bg-white border border-gray-200 rounded-md shadow px-2 py-1 text-sm z-10"
+    >
+      Refresh in {{ countdown }}s
+    </div>
+
+    <!-- Graph container -->
     <div
       class="bg-white rounded-xl border border-gray-300 shadow h-full"
       ref="graphContainer"
@@ -11,48 +19,47 @@
       v-if="selectedNode"
       class="absolute top-4 right-4 bg-white border border-gray-300 rounded-xl shadow p-4 w-64 z-10"
     >
-     <div class="mb-2">
-      <template v-if="editing">
-        <div class="flex items-center mb-2">
-          <input
-            v-model="newName"
-            class="border border-gray-300 rounded p-1 flex-1 text-sm"
-            placeholder="Enter name"
-          />
-        </div>
-        <div class="flex justify-start gap-2">
-          <button
-            class="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
-            @click="saveName"
-            :disabled="saving"
-          >
-            {{ saving ? 'Saving…' : 'Save' }}
-          </button>
-          <button
-            class="px-3 py-1 bg-gray-200 rounded text-sm hover:bg-gray-300"
-            @click="cancelEdit"
-            :disabled="saving"
-          >
-            Cancel
-          </button>
-        </div>
-      </template>
-  <template v-else>
-    <div class="flex items-center justify-between">
-      <span class="font-semibold text-lg break-all">{{ selectedNode.label }}</span>
-      <button
-        class="ml-1 text-black hover:text-gray-700"
-        @click="startEdit"
-        title="Rename"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="black" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 20h9M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4L16.5 3.5z" />
-        </svg>
-      </button>
-    </div>
-  </template>
-</div>
-
+      <div class="mb-2">
+        <template v-if="editing">
+          <div class="flex items-center mb-2">
+            <input
+              v-model="newName"
+              class="border border-gray-300 rounded p-1 flex-1 text-sm"
+              placeholder="Enter name"
+            />
+          </div>
+          <div class="flex justify-start gap-2">
+            <button
+              class="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
+              @click="saveName"
+              :disabled="saving"
+            >
+              {{ saving ? 'Saving…' : 'Save' }}
+            </button>
+            <button
+              class="px-3 py-1 bg-gray-200 rounded text-sm hover:bg-gray-300"
+              @click="cancelEdit"
+              :disabled="saving"
+            >
+              Cancel
+            </button>
+          </div>
+        </template>
+        <template v-else>
+          <div class="flex items-center justify-between">
+            <span class="font-semibold text-lg break-all">{{ selectedNode.label }}</span>
+            <button
+              class="ml-1 text-black hover:text-gray-700"
+              @click="startEdit"
+              title="Rename"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="black" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 20h9M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4L16.5 3.5z" />
+              </svg>
+            </button>
+          </div>
+        </template>
+      </div>
 
       <p class="text-sm"><strong>IP:</strong> {{ selectedNode.id }}</p>
       <p class="mt-1 text-sm">
@@ -100,12 +107,18 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import * as d3 from 'd3'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const REFRESH_INTERVAL = 10 // seconds
+
 let timerId
+let countdownTimer
+
 const positions = new Map()
 let simulation
 
 const graphContainer = ref(null)
 const selectedNode = ref(null)
+
+const countdown = ref(REFRESH_INTERVAL)
 
 const editing = ref(false)
 const newName = ref('')
@@ -132,10 +145,9 @@ function renderGraph({ nodes, links }) {
   })
 
   const svg = d3.select(container).append('svg')
-  .attr('viewBox', `0 0 ${width} ${height}`)
-  .attr('preserveAspectRatio', 'xMidYMid meet')
-  .classed('w-full h-full', true)
-
+    .attr('viewBox', `0 0 ${width} ${height}`)
+    .attr('preserveAspectRatio', 'xMidYMid meet')
+    .classed('w-full h-full', true)
 
   const zoomGroup = svg.append('g')
 
@@ -147,20 +159,17 @@ function renderGraph({ nodes, links }) {
     .attr('stroke-width', 2)
 
   const nodeGroup = zoomGroup.append('g')
-  .attr('stroke', '#e5e7eb')
-  .attr('stroke-width', 2)
-  .selectAll('circle')
-  .data(nodes)
-  .join('circle')
-    .attr('r', d => d.is_gateway ? 20 : 12)                      // larger for gateway
-    .attr('fill', d => d.is_gateway ? '#10b981'                  // blue for gateway
-                   : d.online   ? '#10b981'                     // green if online
-                                : '#94a3b8')                    // grey if offline
-    .classed('circle-pulse', d => d.is_gateway)                 // pulse animation for gateway
+    .attr('stroke', '#e5e7eb')
+    .attr('stroke-width', 2)
+    .selectAll('circle')
+    .data(nodes)
+    .join('circle')
+    .attr('r', d => d.is_gateway ? 20 : 12)
+    .attr('fill', d => d.is_gateway ? '#10b981' : d.online ? '#10b981' : '#94a3b8')
     .style('cursor', 'pointer')
     .style('filter', 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1))')
-    .on('mouseover', function() { d3.select(this).attr('stroke', '#0ea5e9') })
-    .on('mouseout',  function() { d3.select(this).attr('stroke', '#e5e7eb') })
+    .on('mouseover', function () { d3.select(this).attr('stroke', '#0ea5e9') })
+    .on('mouseout',  function () { d3.select(this).attr('stroke', '#e5e7eb') })
     .on('click', (_, d) => {
       selectedNode.value = d
       editing.value = false
@@ -170,7 +179,7 @@ function renderGraph({ nodes, links }) {
       .on('start', dragstarted)
       .on('drag',  dragged)
       .on('end',   dragended)
-    );
+    )
 
   const labels = zoomGroup.append('g')
     .selectAll('g')
@@ -197,7 +206,7 @@ function renderGraph({ nodes, links }) {
     .force('link', d3.forceLink(links).id(d => d.id).distance(200))
     .force('charge', d3.forceManyBody().strength(-800))
     .force('center', d3.forceCenter(width / 2, height / 2))
-    .force('collide', d3.forceCollide().radius(45))
+    .force('collide', d3.forceCollide().radius(50))
     .on('tick', ticked)
 
   function ticked() {
@@ -213,7 +222,7 @@ function renderGraph({ nodes, links }) {
       .each(d => positions.set(d.id, { x: d.x, y: d.y }))
 
     labels.attr('transform', d => `translate(${d.x + 15}, ${d.y + 5})`)
-    labels.selectAll('rect').each(function (_) {
+    labels.selectAll('rect').each(function () {
       const textEl = this.nextSibling
       if (textEl && textEl.getBBox) {
         const { width, height } = textEl.getBBox()
@@ -261,7 +270,8 @@ async function updateGraph() {
     console.error('Failed to fetch topology:', e)
   } finally {
     clearTimeout(timerId)
-    timerId = setTimeout(updateGraph, 10000)
+    countdown.value = REFRESH_INTERVAL
+    timerId = setTimeout(updateGraph, REFRESH_INTERVAL * 1000)
   }
 }
 
@@ -275,6 +285,12 @@ function zoomOut() {
   const svg = d3.select(graphContainer.value).select('svg')
   renderGraph.zoomTransform = renderGraph.zoomTransform.scale(0.8)
   svg.transition().duration(300).call(renderGraph.zoom.transform, renderGraph.zoomTransform)
+}
+
+function startCountdown() {
+  countdownTimer = setInterval(() => {
+    if (countdown.value > 0) countdown.value--
+  }, 1000)
 }
 
 function startEdit() {
@@ -311,10 +327,12 @@ function closePanel() {
 
 onMounted(() => {
   updateGraph()
+  startCountdown()
   window.addEventListener('resize', updateGraph)
 })
 onUnmounted(() => {
   clearTimeout(timerId)
+  clearInterval(countdownTimer)
   window.removeEventListener('resize', updateGraph)
 })
 </script>
@@ -324,15 +342,5 @@ svg {
   display: block;
   width: 100%;
   height: 100%;
-}
-.tooltip {
-  position: absolute;
-  background: white;
-  border: 1px solid #ccc;
-  padding: 4px 8px;
-  border-radius: 6px;
-  pointer-events: none;
-  font-size: 0.75rem;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
 }
 </style>

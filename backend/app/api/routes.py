@@ -1,12 +1,10 @@
-# NetView/backend/app/api/routes.py
-
 import socket
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from backend.app.services.network_monitor import get_network_stats, discover_devices
-from backend.app.database import get_all_devices, rename_device
+from backend.app.database import get_all_devices, rename_device, get_alerts
 
 router = APIRouter()
 
@@ -34,6 +32,11 @@ async def get_topology():
 @router.get("/debug/devices")
 async def get_all_devices_debug():
     return get_all_devices()
+
+
+@router.get("/alerts")
+async def api_get_alerts():
+    return get_alerts()
 
 
 class RenameRequest(BaseModel):
@@ -65,5 +68,4 @@ def generate_topology():
     ]
 
     links = [{"source": local_ip, "target": d["ip"]} for d in devices]
-
     return {"nodes": nodes, "links": links}

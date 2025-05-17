@@ -1,4 +1,5 @@
-# database.py
+# NetView/backend/app/database.py
+
 import sqlite3
 import datetime
 import os
@@ -11,7 +12,7 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # 1) Create the devices table if missing
+    # devices table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS devices (
         mac TEXT PRIMARY KEY,
@@ -22,11 +23,23 @@ def init_db():
     )
     """)
 
-    # 2) Ensure `name` column exists (migrate if needed)
+    # name column
     cursor.execute("PRAGMA table_info(devices)")
     cols = [r[1] for r in cursor.fetchall()]
     if "name" not in cols:
         cursor.execute("ALTER TABLE devices ADD COLUMN name TEXT")
+
+    # alerts table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS alerts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT,
+        mac TEXT,
+        ip TEXT,
+        timestamp TIMESTAMP,
+        message TEXT
+    )
+    """)
 
     conn.commit()
     conn.close()
@@ -47,9 +60,11 @@ def get_all_devices():
 
 
 def upsert_device(mac, ip):
-    now = datetime.datetime.utcnow()
+    # use timezone-aware UTC now
+    now = datetime.datetime.now(datetime.timezone.utc)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+
     cursor.execute("SELECT 1 FROM devices WHERE mac = ?", (mac,))
     exists = cursor.fetchone()
 
@@ -86,7 +101,6 @@ def mark_offline(exclude_macs):
 
 
 def rename_device(mac: str, new_name: str):
-    """Set or clear the human‐friendly name for a device."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
@@ -96,6 +110,37 @@ def rename_device(mac: str, new_name: str):
     """, (new_name or None, mac))
     conn.commit()
     conn.close()
+
+
+# alerts helpers
+
+def add_alert(type: str, mac: str, ip: str, message: str):
+    # use timezone-aware UTC now
+    now = datetime.datetime.now(datetime.timezone.utc)
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO alerts (type, mac, ip, timestamp, message)
+        VALUES (?, ?, ?, ?, ?)
+    """, (type, mac, ip, now, message))
+    conn.commit()
+    conn.close()
+
+
+def get_alerts():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id, type, mac, ip, timestamp, message
+        FROM alerts
+        ORDER BY timestamp DESC
+        LIMIT 50
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+
+    keys = ["id", "type", "mac", "ip", "timestamp", "message"]
+    return [dict(zip(keys, row)) for row in rows]
 
 
 if __name__ == "__main__":
