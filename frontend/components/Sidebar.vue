@@ -14,7 +14,7 @@
       v-if="loading"
       class="bg-white border border-slate-300 rounded-xl shadow p-4 w-full mb-4"
     >
-      <p class="text-gray-500">Loading statistics...</p>
+      <p class="text-gray-500">Loading statistics…</p>
     </div>
 
     <!-- Draggable stats blocks -->
@@ -27,14 +27,37 @@
     >
       <template #item="{ element }">
         <SidebarBlock
-          :title="element.title"
+          :title="element.key === 'alerts' ? '' : element.title"
           :class="element.key === 'alerts'
             ? 'flex flex-col flex-grow min-h-0'
             : 'flex-none'"
         >
           <div class="flex flex-col h-full min-h-0">
-            <!-- main line -->
-            <div class="flex items-center justify-between cursor-move">
+
+            <!-- Alerts header: title + download icon on the right -->
+            <div
+              v-if="element.key === 'alerts'"
+              class="flex items-center justify-between mb-6"
+            >
+              <span class="font-semibold">Alerts</span>
+              <svg
+                @click="exportAlerts"
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5 text-black cursor-pointer hover:text-gray-500"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+              </svg>
+            </div>
+
+            <!-- Main line for other blocks -->
+            <div
+              v-else
+              class="flex items-center justify-between cursor-move"
+            >
               <div class="flex-1">
                 <template v-if="element.key === 'health'">
                   <span :class="healthClass">{{ stats.network_health }}</span>
@@ -51,31 +74,23 @@
               </div>
             </div>
 
-            <!-- Always-visible alerts list with scroll -->
+            <!-- Alerts list -->
             <template v-if="element.key === 'alerts'">
               <ul
                 class="list-none overflow-y-auto max-h-[35vh] pr-6"
                 role="list"
-                aria-label="Active alerts"
+                aria-label="Alerts"
               >
                 <li
                   v-for="a in alerts"
                   :key="a.id"
                   class="flex items-center justify-between py-2"
                 >
-                  <!-- left: message + timestamp -->
                   <div class="flex-1 pr-2">
-                    <p class="text-sm text-gray-800">
-                      {{ a.message }}
-                    </p>
-                    <p class="mt-1 text-xs text-gray-500">
-                      {{ formatTimestamp(a.timestamp) }}
-                    </p>
+                    <p class="text-sm text-gray-800">{{ a.message }}</p>
+                    <p class="mt-1 text-xs text-gray-500">{{ formatTimestamp(a.timestamp) }}</p>
                   </div>
-
-                  <!-- right: icon, vertically centered -->
                   <div class="flex-shrink-0 flex items-center">
-                    <!-- brand-new device -->
                     <svg
                       v-if="a.type === 'new_device'"
                       class="h-5 w-5 text-green-500"
@@ -88,8 +103,6 @@
                         clip-rule="evenodd"
                       />
                     </svg>
-
-                   <!-- device back online -->
                     <svg
                       v-else-if="a.type === 'device_back_online'"
                       class="h-5 w-5 text-emerald-500"
@@ -99,8 +112,6 @@
                     >
                       <circle cx="10" cy="10" r="8" />
                     </svg>
-
-                    <!-- device went offline -->
                     <svg
                       v-else-if="a.type === 'device_offline'"
                       class="h-5 w-5 text-slate-400"
@@ -110,8 +121,6 @@
                     >
                       <circle cx="10" cy="10" r="8" />
                     </svg>
-
-                    <!-- fallback warning -->
                     <svg
                       v-else
                       class="h-5 w-5 text-yellow-500"
@@ -126,7 +135,6 @@
                     </svg>
                   </div>
                 </li>
-
                 <li
                   v-if="alerts.length === 0"
                   class="py-2 text-center text-gray-500"
@@ -135,6 +143,7 @@
                 </li>
               </ul>
             </template>
+
           </div>
         </SidebarBlock>
       </template>
@@ -147,23 +156,23 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import draggable from 'vuedraggable'
 import SidebarBlock from '~/components/SidebarBlock.vue'
 
-const API       = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const stats     = ref({})
-const alerts    = ref([])
-const loading   = ref(true)
-const error     = ref(null)
+const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const stats = ref({})
+const alerts = ref([])
+const loading = ref(true)
+const error = ref(null)
 const countdown = ref(0)
 
 const blocks = ref([
   { key: 'health', title: 'Network Health' },
-  { key: 'total',  title: 'Total Devices' },
+  { key: 'total', title: 'Total Devices' },
   { key: 'online', title: 'Currently Online' },
-  { key: 'latency',title: 'Average Latency' },
-  { key: 'alerts', title: 'Alerts' },
+  { key: 'latency', title: 'Average Latency' },
+  { key: 'alerts', title: 'Alerts' }
 ])
 
 let refreshTimer = null
-let tickTimer    = null
+let tickTimer = null
 
 async function fetchStats(showLoading = false) {
   if (showLoading) loading.value = true
@@ -232,19 +241,21 @@ const latencyClass = computed(() => {
   return 'text-red-600'
 })
 
-// compute real number of alerts
-const activeAlertCount = computed(() => alerts.value.length)
-
-// update class logic based on real alert count
-const alertClass = computed(() => {
-  const a = alerts.value.length
-  const t = stats.value.current_online_devices || 1
-  if (a === 0) return 'text-green-600'
-  const ratio = a / t
-  if (ratio > 0.5 || a >= 10) return 'text-red-600'
-  if (ratio > 0.2 || a >= 3)  return 'text-amber-500'
-  return 'text-yellow-600'
-})
+function exportAlerts() {
+  const lines = alerts.value.map(a => {
+    const time = new Date(a.timestamp).toLocaleString()
+    return `${time} — ${a.message}`
+  })
+  const blob = new Blob([lines.join("\n")], { type: "text/plain" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = `alerts_${new Date().toISOString()}.txt`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
 
 function formatTimestamp(ts) {
   try {
