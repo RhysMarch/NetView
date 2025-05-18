@@ -1,3 +1,5 @@
+# backend/app/database.py
+
 import sqlite3
 import datetime
 import os
@@ -6,8 +8,28 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "devices.db")
 
 
+def _get_conn():
+    """
+    Create a SQLite connection with:
+     - WAL journal mode (better concurrent reads/writes)
+     - busy timeout of 5s before “database is locked” error
+     - thread‐safety disabled check so you can share across threads
+    """
+    conn = sqlite3.connect(
+        DB_PATH,
+        timeout=5.0,
+        check_same_thread=False,
+        detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
+    )
+    # ensure our busy timeout
+    conn.execute("PRAGMA busy_timeout = 5000;")
+    # ensure WAL journaling
+    conn.execute("PRAGMA journal_mode = WAL;")
+    return conn
+
+
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
 
     # devices table
@@ -17,19 +39,12 @@ def init_db():
         ip TEXT,
         online INTEGER,
         first_seen TIMESTAMP,
-        last_seen TIMESTAMP
+        last_seen TIMESTAMP,
+        name TEXT,
+        hostname TEXT,
+        vendor TEXT
     )
     """)
-
-    # add name, hostname, vendor columns if missing
-    cursor.execute("PRAGMA table_info(devices)")
-    cols = [r[1] for r in cursor.fetchall()]
-    if "name" not in cols:
-        cursor.execute("ALTER TABLE devices ADD COLUMN name TEXT")
-    if "hostname" not in cols:
-        cursor.execute("ALTER TABLE devices ADD COLUMN hostname TEXT")
-    if "vendor" not in cols:
-        cursor.execute("ALTER TABLE devices ADD COLUMN vendor TEXT")
 
     # alerts table
     cursor.execute("""
@@ -48,7 +63,7 @@ def init_db():
 
 
 def get_all_devices():
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT mac, ip, online, first_seen, last_seen, name, hostname, vendor
@@ -63,14 +78,13 @@ def get_all_devices():
 
 def upsert_device(mac, ip, hostname=None, vendor=None):
     now = datetime.datetime.now(datetime.timezone.utc)
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
 
     cursor.execute("SELECT 1 FROM devices WHERE mac = ?", (mac,))
     exists = cursor.fetchone()
 
     if exists:
-        # only overwrite hostname/vendor when we actually got a new non-null value
         cursor.execute("""
             UPDATE devices
             SET ip        = ?,
@@ -94,7 +108,7 @@ def upsert_device(mac, ip, hostname=None, vendor=None):
 
 
 def mark_offline(exclude_macs):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     if exclude_macs:
         placeholders = ",".join("?" for _ in exclude_macs)
@@ -110,7 +124,7 @@ def mark_offline(exclude_macs):
 
 
 def rename_device(mac: str, new_name: str):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("""
         UPDATE devices
@@ -121,15 +135,12 @@ def rename_device(mac: str, new_name: str):
     conn.close()
 
 
-# alerts helpers
-
 def add_alert(type: str, mac: str, ip: str, message: str):
     now = datetime.datetime.now(datetime.timezone.utc)
-
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
 
-    # Check for similar recent alert in the last 5 seconds
+    # Dedupe any alert of the same type+mac+message in the last 5s
     cursor.execute("""
         SELECT 1 FROM alerts
         WHERE type = ?
@@ -138,7 +149,6 @@ def add_alert(type: str, mac: str, ip: str, message: str):
           AND timestamp > datetime(?, '-5 seconds')
         LIMIT 1
     """, (type, mac, message, now.isoformat()))
-
     if cursor.fetchone():
         conn.close()
         return
@@ -148,7 +158,7 @@ def add_alert(type: str, mac: str, ip: str, message: str):
         VALUES (?, ?, ?, ?, ?)
     """, (type, mac, ip, now, message))
 
-    # keep only latest 100
+    # keep only most recent 100
     cursor.execute("""
         DELETE FROM alerts
         WHERE id NOT IN (
@@ -157,13 +167,12 @@ def add_alert(type: str, mac: str, ip: str, message: str):
             LIMIT 100
         )
     """)
-
     conn.commit()
     conn.close()
 
 
 def get_alerts():
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT id, type, mac, ip, timestamp, message
@@ -179,4 +188,4 @@ def get_alerts():
 
 if __name__ == "__main__":
     init_db()
-    print("Database migrated/created.")
+    print("Database initialized with WAL mode and busy timeout.")
