@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.app.api.routes import router
+from backend.app.api.routes import router, set_local_ip
 from backend.app.database import init_db
 from backend.app.services.network_monitor import _discover_and_update
 import threading
@@ -38,5 +38,6 @@ def _scan_loop():
 @app.on_event("startup")
 async def startup_scanner():
     """Spawn a daemon thread that continuously rescans the network."""
+    set_local_ip()
     t = threading.Thread(target=_scan_loop, daemon=True)
     t.start()

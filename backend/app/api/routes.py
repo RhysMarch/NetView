@@ -15,6 +15,18 @@ from backend.app.database import (
 
 router = APIRouter()
 
+_local_ip = None
+
+
+def set_local_ip():
+    global _local_ip
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        _local_ip = s.getsockname()[0]
+    finally:
+        s.close()
+
 
 def get_local_ip() -> str:
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -34,7 +46,7 @@ def fetch_stats():
 @router.get("/topology")
 async def get_topology():
     devices = await run_in_threadpool(discover_devices_once)
-    return generate_topology(devices)
+    return generate_topology(devices, _local_ip)
 
 
 @router.get("/debug/devices")
@@ -60,9 +72,7 @@ async def api_rename_device(mac: str, req: RenameRequest):
     return {"mac": mac.lower(), "name": req.name}
 
 
-def generate_topology(devices):
-    local_ip = get_local_ip()
-
+def generate_topology(devices, local_ip):
     nodes = [
         {
             "id":       d["ip"],
