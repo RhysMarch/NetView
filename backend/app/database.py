@@ -107,17 +107,19 @@ def upsert_device(mac, ip, hostname=None, vendor=None):
     conn.close()
 
 
-def mark_offline(exclude_macs):
+def mark_offline(online_macs: set[str]):
     conn = _get_conn()
     cursor = conn.cursor()
-    if exclude_macs:
-        placeholders = ",".join("?" for _ in exclude_macs)
-        cursor.execute(f"""
-            UPDATE devices SET online = 0
-            WHERE mac NOT IN ({placeholders})
-        """, list(exclude_macs))
-    else:
-        cursor.execute("UPDATE devices SET online = 0")
+
+    # Step 1: Mark everything offline
+    cursor.execute("UPDATE devices SET online = 0")
+
+    # Step 2: Mark only known MACs back online
+    if online_macs:
+        cursor.executemany(
+            "UPDATE devices SET online = 1 WHERE mac = ?",
+            [(mac,) for mac in online_macs if mac]
+        )
 
     conn.commit()
     conn.close()

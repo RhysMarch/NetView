@@ -11,7 +11,7 @@ app = FastAPI()
 # Allow frontend to talk to us
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],      # lock this down in prod
+    allow_origins=["*"],  # lock this down in prod
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -23,6 +23,7 @@ app.include_router(router, prefix="/api")
 # Ensure the SQLite DB and tables exist
 init_db()
 
+
 def _scan_loop():
     """Continuously re-scan in the background."""
     from backend.app.config import SYNC_INTERVAL_SECONDS
@@ -32,6 +33,7 @@ def _scan_loop():
         except Exception:
             pass
         time.sleep(SYNC_INTERVAL_SECONDS)
+
 
 @app.on_event("startup")
 async def startup_scanner():
