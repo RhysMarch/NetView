@@ -6,6 +6,7 @@ import requests
 from ping3 import ping
 from scapy.layers.l2 import ARP, Ether
 from scapy.sendrecv import srp
+from manuf import manuf
 import ipaddress
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -49,14 +50,24 @@ def _reverse_dns(ip: str) -> str | None:
         return None
 
 
+_parser = manuf.MacParser()
+
+
 def _vendor_api(mac: str) -> str | None:
+    # 1) Try public API
     try:
         resp = requests.get(f"https://api.macvendors.com/{mac}", timeout=2)
-        if resp.status_code == 200:
-            return resp.text.strip()
-    except requests.RequestException:
+        resp.raise_for_status()
+        vendor = resp.text.strip()
+        print(f"[VENDOR REMOTE] {mac} → {vendor}")
+        return vendor
+    except Exception:
         pass
-    return None
+
+    # 2) Fallback to offline
+    vendor = _parser.get_manuf(mac)
+    print(f"[VENDOR OFFLINE] {mac} → {vendor or 'Unknown'}")
+    return vendor
 
 
 def _needs_refresh(last_seen_iso: str | None, ttl: int) -> bool:
