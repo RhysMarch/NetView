@@ -1,5 +1,3 @@
-# NetView/backend/app/database.py
-
 import sqlite3
 import datetime
 import os
@@ -23,11 +21,15 @@ def init_db():
     )
     """)
 
-    # name column
+    # add name, hostname, vendor columns if missing
     cursor.execute("PRAGMA table_info(devices)")
     cols = [r[1] for r in cursor.fetchall()]
     if "name" not in cols:
         cursor.execute("ALTER TABLE devices ADD COLUMN name TEXT")
+    if "hostname" not in cols:
+        cursor.execute("ALTER TABLE devices ADD COLUMN hostname TEXT")
+    if "vendor" not in cols:
+        cursor.execute("ALTER TABLE devices ADD COLUMN vendor TEXT")
 
     # alerts table
     cursor.execute("""
@@ -49,18 +51,17 @@ def get_all_devices():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT mac, ip, online, first_seen, last_seen, name
+        SELECT mac, ip, online, first_seen, last_seen, name, hostname, vendor
         FROM devices
     """)
     rows = cursor.fetchall()
     conn.close()
 
-    keys = ["mac", "ip", "online", "first_seen", "last_seen", "name"]
+    keys = ["mac", "ip", "online", "first_seen", "last_seen", "name", "hostname", "vendor"]
     return [dict(zip(keys, row)) for row in rows]
 
 
-def upsert_device(mac, ip):
-    # use timezone-aware UTC now
+def upsert_device(mac, ip, hostname=None, vendor=None):
     now = datetime.datetime.now(datetime.timezone.utc)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -69,16 +70,24 @@ def upsert_device(mac, ip):
     exists = cursor.fetchone()
 
     if exists:
+        # only overwrite hostname/vendor when we actually got a new non-null value
         cursor.execute("""
             UPDATE devices
-            SET ip = ?, online = 1, last_seen = ?
+            SET ip        = ?,
+                online    = 1,
+                last_seen = ?,
+                hostname  = COALESCE(?, hostname),
+                vendor    = COALESCE(?, vendor)
             WHERE mac = ?
-        """, (ip, now, mac))
+        """, (ip, now, hostname, vendor, mac))
     else:
         cursor.execute("""
-            INSERT INTO devices (mac, ip, online, first_seen, last_seen)
-            VALUES (?, ?, 1, ?, ?)
-        """, (mac, ip, now, now))
+            INSERT INTO devices (
+                mac, ip, online,
+                first_seen, last_seen,
+                hostname, vendor
+            ) VALUES (?, ?, 1, ?, ?, ?, ?)
+        """, (mac, ip, now, now, hostname, vendor))
 
     conn.commit()
     conn.close()
@@ -132,15 +141,14 @@ def add_alert(type: str, mac: str, ip: str, message: str):
 
     if cursor.fetchone():
         conn.close()
-        return  # Skip inserting duplicate alert
+        return
 
-    # Insert the new alert
     cursor.execute("""
         INSERT INTO alerts (type, mac, ip, timestamp, message)
         VALUES (?, ?, ?, ?, ?)
     """, (type, mac, ip, now, message))
 
-    # Retain only the most recent 100 alerts
+    # keep only latest 100
     cursor.execute("""
         DELETE FROM alerts
         WHERE id NOT IN (
@@ -152,7 +160,6 @@ def add_alert(type: str, mac: str, ip: str, message: str):
 
     conn.commit()
     conn.close()
-
 
 
 def get_alerts():

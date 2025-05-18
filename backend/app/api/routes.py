@@ -1,5 +1,3 @@
-# backend/app/api/routes.py
-
 import socket
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
@@ -67,10 +65,12 @@ def generate_topology(devices):
 
     nodes = [
         {
-            "id":         d["ip"],
-            "label":      d["name"] or d["ip"],
-            "online":     bool(d["online"]),
-            "mac":        d["mac"],
+            "id":       d["ip"],
+            "label":    d["name"] or d.get("hostname") or d["ip"],
+            "online":   bool(d["online"]),
+            "mac":      d["mac"],
+            "hostname": d.get("hostname"),
+            "vendor":   d.get("vendor"),
             "is_gateway": (d["ip"] == local_ip),
         }
         for d in devices

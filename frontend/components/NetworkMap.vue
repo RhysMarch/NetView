@@ -1,4 +1,3 @@
-<!-- NetworkMap.vue -->
 <template>
   <div class="relative h-full">
     <!-- Next-update countdown badge -->
@@ -53,6 +52,7 @@
               @click="startEdit"
               title="Rename"
             >
+              <!-- pencil icon -->
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="black" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 20h9M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4L16.5 3.5z" />
               </svg>
@@ -69,6 +69,8 @@
         </span>
       </p>
       <p class="mt-1 text-sm"><strong>MAC:</strong> {{ selectedNode.mac || 'Unknown' }}</p>
+      <p class="mt-1 text-sm"><strong>Hostname:</strong> {{ selectedNode.hostname || 'Unknown' }}</p>
+      <p class="mt-1 text-sm"><strong>Vendor:</strong> {{ selectedNode.vendor || 'Unknown' }}</p>
 
       <button
         class="mt-4 px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-sm"
@@ -184,42 +186,41 @@ function renderGraph({ nodes, links }) {
       .on('end',   dragended)
     )
 
-    const pulses = 5           // Number of pulse cycles (how many times the node will pulse)
-    const pulseInDur = 400     // Duration of the outward pulse (thicker stroke) in ms
-    const pulseOutDur = 500    // Duration of the inward pulse (return to normal stroke) in ms
-    const pauseDur = 200       // Pause between each pulse cycle in ms
-    const baseStroke = 2       // Default stroke width for nodes
-    const thickStroke = 8      // Stroke width used during pulse to emphasize the change
+  const pulses = 5           // Number of pulse cycles
+  const pulseInDur = 400     // Duration of the outward pulse in ms
+  const pulseOutDur = 500    // Duration of the inward pulse in ms
+  const pauseDur = 200       // Pause between each pulse cycle in ms
+  const baseStroke = 2       // Default stroke width
+  const thickStroke = 8      // Stroke width during pulse
 
+  changedIds.forEach(id => {
+    const sel = zoomGroup
+      .selectAll('circle')
+      .filter(d => d.id === id)
 
-    changedIds.forEach(id => {
-      const sel = zoomGroup
-        .selectAll('circle')
-        .filter(d => d.id === id)
+    let t0 = 0
+    for (let i = 0; i < pulses; i++) {
+      // pulse out
+      sel.transition()
+        .delay(t0)
+        .duration(pulseInDur)
+        .attr('stroke-width', thickStroke)
+        .attr('stroke', d => d.online ? '#10b981' : '#94a3b8')
+        .ease(d3.easeQuadOut)
 
-      let t0 = 0
-      for (let i = 0; i < pulses; i++) {
-        // pulse out
-        sel.transition()
-          .delay(t0)
-          .duration(pulseInDur)
-          .attr('stroke-width', thickStroke)
-          .attr('stroke', d => d.online ? '#10b981' : '#94a3b8')
-          .ease(d3.easeQuadOut)
+      t0 += pulseInDur
 
-        t0 += pulseInDur
+      // pulse in
+      sel.transition()
+        .delay(t0)
+        .duration(pulseOutDur)
+        .attr('stroke-width', baseStroke)
+        .attr('stroke', '#e5e7eb')
+        .ease(d3.easeQuadIn)
 
-        // pulse in
-        sel.transition()
-          .delay(t0)
-          .duration(pulseOutDur)
-          .attr('stroke-width', baseStroke)
-          .attr('stroke', '#e5e7eb')
-          .ease(d3.easeQuadIn)
-
-        t0 += pulseOutDur + pauseDur
-      }
-    })
+      t0 += pulseOutDur + pauseDur
+    }
+  })
 
   const labels = zoomGroup.append('g')
     .selectAll('g')

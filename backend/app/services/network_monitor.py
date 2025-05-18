@@ -1,12 +1,14 @@
-# backend/app/services/network_monitor.py
-
 import time
+import datetime
 import psutil
 import socket
+import requests
 from ping3 import ping
 from scapy.layers.l2 import ARP, Ether
 from scapy.sendrecv import srp
 import ipaddress
+
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from backend.app.database import (
     get_all_devices,
@@ -16,8 +18,9 @@ from backend.app.database import (
 )
 from backend.app.config import SYNC_INTERVAL_SECONDS
 
-_last_devices_snapshot = []
-_last_scan_time = 0
+_LOOKUP_WORKERS = 10
+_VENDOR_TTL = 24 * 3600  # seconds
+_HOST_TTL = 1 * 3600  # seconds
 
 
 def normalize_mac(mac: str) -> str:
@@ -32,29 +35,51 @@ def get_default_gateway_subnet() -> str | None:
     finally:
         sock.close()
 
-    for iface, addrs in psutil.net_if_addrs().items():
+    for addrs in psutil.net_if_addrs().values():
         for snic in addrs:
             if snic.family == socket.AF_INET and snic.address == local_ip:
                 return str(ipaddress.IPv4Network(f"{local_ip}/{snic.netmask}", strict=False))
     return None
 
 
-def discover_devices_once():
-    """Run discovery if last scan is stale, otherwise return cached snapshot."""
-    global _last_devices_snapshot, _last_scan_time
-    now = time.time()
-    if now - _last_scan_time < SYNC_INTERVAL_SECONDS:
-        return _last_devices_snapshot
+def _reverse_dns(ip: str) -> str | None:
+    try:
+        return socket.gethostbyaddr(ip)[0]
+    except socket.herror:
+        return None
 
-    _last_devices_snapshot = _discover_and_update()
-    _last_scan_time = now
-    return _last_devices_snapshot
+
+def _vendor_api(mac: str) -> str | None:
+    try:
+        resp = requests.get(f"https://api.macvendors.com/{mac}", timeout=2)
+        if resp.status_code == 200:
+            return resp.text.strip()
+    except requests.RequestException:
+        pass
+    return None
+
+
+def _needs_refresh(last_seen_iso: str | None, ttl: int) -> bool:
+    if not last_seen_iso:
+        return True
+    try:
+        dt = datetime.datetime.fromisoformat(last_seen_iso)
+        return (time.time() - dt.timestamp()) > ttl
+    except Exception:
+        return True
+
+
+def _do_lookup(mac, ip, do_host, do_vend, existing):
+    hostname = _reverse_dns(ip) if do_host else existing.get("hostname")
+    vendor = _vendor_api(mac) if do_vend else existing.get("vendor")
+    return mac, ip, hostname, vendor
 
 
 def _discover_and_update():
+    """Run one full ARP/DNS/vendor sweep and write into the DB."""
     all_devices = get_all_devices()
-    devices_by_mac = {normalize_mac(d["mac"]): d for d in all_devices}
-    online_before = {mac for mac, d in devices_by_mac.items() if d["online"]}
+    by_mac = {normalize_mac(d["mac"]): d for d in all_devices}
+    online_before = {m for m, d in by_mac.items() if d["online"]}
 
     subnet = get_default_gateway_subnet()
     if not subnet:
@@ -62,35 +87,60 @@ def _discover_and_update():
 
     answered = srp(
         Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=subnet),
-        timeout=2,
-        verbose=False
+        timeout=2, verbose=False
     )[0]
 
     seen = set()
+    tasks = []
     for _, pkt in answered:
-        raw_mac = pkt.hwsrc
-        mac = normalize_mac(raw_mac)
+        mac = normalize_mac(pkt.hwsrc)
         ip = pkt.psrc
         seen.add(mac)
 
-        device = devices_by_mac.get(mac, {})
-        label = device.get("name") or ip
+        dev = by_mac.get(mac, {})
+        last_seen = dev.get("last_seen")
+        do_host = not dev.get("hostname") or _needs_refresh(last_seen, _HOST_TTL)
+        do_vend = not dev.get("vendor") or _needs_refresh(last_seen, _VENDOR_TTL)
+        tasks.append((mac, ip, do_host, do_vend, dev))
 
-        if mac not in devices_by_mac:
+    # parallel DNS + vendor lookups
+    results = []
+    with ThreadPoolExecutor(max_workers=_LOOKUP_WORKERS) as ex:
+        futures = {
+            ex.submit(_do_lookup, mac, ip, dh, dv, dev): (mac, ip)
+            for mac, ip, dh, dv, dev in tasks
+        }
+        for fut in as_completed(futures):
+            results.append(fut.result())
+
+    # write results & generate alerts
+    for mac, ip, hostname, vendor in results:
+        existing = by_mac.get(mac)
+        label = (existing.get("name") or hostname or ip) if existing else hostname or ip
+
+        if not existing:
             add_alert("new_device", mac, ip, f"New device detected: {mac} @ {label}")
         elif mac not in online_before:
             add_alert("device_back_online", mac, ip, f"Device back online: {mac} @ {label}")
 
-        upsert_device(mac, ip)
+        upsert_device(mac, ip, hostname, vendor)
 
     mark_offline(seen)
 
-    went_offline = online_before - seen
-    for mac in went_offline:
-        old = devices_by_mac[mac]
-        label = old.get("name") or old["ip"]
+    went_off = online_before - seen
+    for mac in went_off:
+        old = by_mac[mac]
+        label = old.get("name") or old.get("hostname") or old["ip"]
         add_alert("device_offline", mac, old["ip"], f"Device went offline: {mac} @ {label}")
 
+    return get_all_devices()
+
+
+def discover_devices_once():
+    """
+    **Always** return the latest snapshot from the DB.
+    Never trigger any network I/O here—that’s now fully backgrounded.
+    """
     return get_all_devices()
 
 
@@ -102,41 +152,38 @@ def measure_latency(target="8.8.8.8") -> str:
 def get_network_stats(devices):
     online = [d for d in devices if d["online"]]
     io = psutil.net_io_counters()
-    current_online = len(online)
     latency = measure_latency()
 
-    # Health scoring logic
-    health_score = 100
+    score = 100
     if latency == "timeout":
-        health_score -= 50
+        score -= 50
     else:
         v = int(latency.replace("ms", ""))
         if v > 150:
-            health_score -= 30
+            score -= 30
         elif v > 80:
-            health_score -= 15
+            score -= 15
 
-    if current_online == 0:
-        health_score -= 30
+    if len(online) == 0:        score -= 30
     if io.bytes_recv < 10_000 and io.bytes_sent < 10_000:
-        health_score -= 15
+        score -= 15
 
-    if health_score >= 85:
-        network_health = "Excellent"
-    elif health_score >= 65:
-        network_health = "Good"
-    elif health_score >= 40:
-        network_health = "Fair"
+    if score >= 85:
+        health = "Excellent"
+    elif score >= 65:
+        health = "Good"
+    elif score >= 40:
+        health = "Fair"
     else:
-        network_health = "Poor"
+        health = "Poor"
 
     return {
-        "network_health":         network_health,
-        "total_devices":          len(devices),
-        "current_online_devices": current_online,
-        "average_latency":        latency,
-        "active_alerts":          0 if network_health in ["Excellent", "Good"] else 1,
-        "next_update":            f"{SYNC_INTERVAL_SECONDS}s",
-        "bytes_sent":             io.bytes_sent,
-        "bytes_recv":             io.bytes_recv,
+        "network_health": health,
+        "total_devices": len(devices),
+        "current_online_devices": len(online),
+        "average_latency": latency,
+        "active_alerts": 0 if health in ["Excellent", "Good"] else 1,
+        "next_update": f"{SYNC_INTERVAL_SECONDS}s",
+        "bytes_sent": io.bytes_sent,
+        "bytes_recv": io.bytes_recv,
     }
