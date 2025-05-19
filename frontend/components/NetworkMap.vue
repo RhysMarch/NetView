@@ -195,7 +195,37 @@ function renderGraph({ nodes, links }) {
       .on('end',   (e,d) => { if(!e.active) simulation.alphaTarget(0); d.fx=null; d.fy=null })
     )
 
-  // pulse animation omitted for brevity…
+    // pulse animation on state-change
+  const pulses     = 5
+  const pulseInDur = 400
+  const pulseOutDur= 500
+  const pauseDur   = 200
+  const baseStroke = 2
+  const thickStroke= 8
+
+  changed.forEach(id => {
+    const sel = zoomG.selectAll('circle').filter(d => d.id === id)
+    let t0 = 0
+    for (let i = 0; i < pulses; i++) {
+      // outward pulse
+      sel.transition()
+        .delay(t0)
+        .duration(pulseInDur)
+        .attr('stroke-width', thickStroke)
+        .attr('stroke', d => d.online ? '#10b981' : '#94a3b8')
+        .ease(d3.easeQuadOut)
+      t0 += pulseInDur
+
+      // inward pulse
+      sel.transition()
+        .delay(t0)
+        .duration(pulseOutDur)
+        .attr('stroke-width', baseStroke)
+        .attr('stroke', '#e5e7eb')
+        .ease(d3.easeQuadIn)
+      t0 += pulseOutDur + pauseDur
+    }
+  })
 
   // labels
   const labels = zoomG.append('g')
