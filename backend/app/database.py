@@ -166,7 +166,7 @@ def add_alert(type: str, mac: str, ip: str, message: str):
         WHERE id NOT IN (
             SELECT id FROM alerts
             ORDER BY timestamp DESC
-            LIMIT 100
+            LIMIT 500
         )
     """)
     conn.commit()
