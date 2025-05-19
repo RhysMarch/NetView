@@ -109,8 +109,9 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import * as d3 from 'd3'
 
-const API             = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API              = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const REFRESH_INTERVAL = 10 // seconds
+
 let timerId, countdownTimer, simulation
 
 const graphContainer = ref(null)
@@ -131,31 +132,46 @@ async function fetchTopology() {
   return res.json()
 }
 
-// apply filter but always keep the gateway node
+/**
+ * Single‐box filter:
+ * - typing "online" or "offline" filters by status
+ * - otherwise substring match against IP, MAC, name (label), or vendor
+ * always includes the gateway node
+ */
 function applyFilter({ nodes, links }, filter) {
   if (!filter) return { nodes, links }
-  const f = filter.toLowerCase()
-  // include any node matching, plus always include gateway(s)
-  const kept = nodes.filter(n =>
-    n.is_gateway ||
-    n.id.toLowerCase().includes(f) ||
-    (n.mac && n.mac.toLowerCase().includes(f)) ||
-    (n.label && n.label.toLowerCase().includes(f))
-  )
+  const f = filter.trim().toLowerCase()
+  const isStatus = f === 'online' || f === 'offline'
+
+  const kept = nodes.filter(n => {
+    if (n.is_gateway) return true
+
+    if (isStatus) {
+      return f === 'online' ? n.online : !n.online
+    }
+
+    return (
+      n.id.toLowerCase().includes(f) ||
+      (n.mac    && n.mac.toLowerCase().includes(f)) ||
+      (n.label  && n.label.toLowerCase().includes(f)) ||
+      (n.vendor && n.vendor.toLowerCase().includes(f))
+    )
+  })
+
   const ids = new Set(kept.map(n => n.id))
-  return {
-    nodes: kept,
-    links: links.filter(l => ids.has(l.source) && ids.has(l.target))
-  }
+  const keptLinks = links.filter(l => ids.has(l.source) && ids.has(l.target))
+  return { nodes: kept, links: keptLinks }
 }
 
+const _prev = new Map()
+
 function renderGraph({ nodes, links }) {
-  const c = graphContainer.value
+  const c      = graphContainer.value
   d3.select(c).selectAll('*').remove()
   const width  = c.clientWidth
   const height = c.clientHeight
 
-  // detect state changes
+  // detect state changes for pulse
   const changed = new Set()
   nodes.forEach(n => {
     const prev = _prev.get(n.id)
@@ -163,6 +179,7 @@ function renderGraph({ nodes, links }) {
     _prev.set(n.id, n.online)
   })
 
+  // build SVG
   const svg   = d3.select(c).append('svg')
     .attr('viewBox', `0 0 ${width} ${height}`)
     .attr('preserveAspectRatio', 'xMidYMid meet')
@@ -186,16 +203,16 @@ function renderGraph({ nodes, links }) {
     .attr('r', d => d.is_gateway ? 20 : 12)
     .attr('fill', d => d.is_gateway ? '#10b981' : d.online ? '#10b981' : '#94a3b8')
     .style('cursor','pointer')
-    .on('mouseover',  function() { d3.select(this).attr('stroke','#0ea5e9') })
-    .on('mouseout',   function() { d3.select(this).attr('stroke','#e5e7eb') })
-    .on('click', (_, d) => { selectedNode.value = d; editing.value = false; newName.value = d.label })
+    .on('mouseover', function() { d3.select(this).attr('stroke','#0ea5e9') })
+    .on('mouseout',  function() { d3.select(this).attr('stroke','#e5e7eb') })
+    .on('click',     (_, d) => { selectedNode.value = d; editing.value = false; newName.value = d.label })
     .call(d3.drag()
-      .on('start', (e,d) => { if(!e.active) simulation.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y })
-      .on('drag',  (e,d) => { d.fx=e.x; d.fy=e.y })
-      .on('end',   (e,d) => { if(!e.active) simulation.alphaTarget(0); d.fx=null; d.fy=null })
+      .on('start', (e,d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y })
+      .on('drag',  (e,d) => { d.fx = e.x; d.fy = e.y })
+      .on('end',   (e,d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null })
     )
 
-    // pulse animation on state-change
+  // pulse animation
   const pulses     = 5
   const pulseInDur = 400
   const pulseOutDur= 500
@@ -207,7 +224,6 @@ function renderGraph({ nodes, links }) {
     const sel = zoomG.selectAll('circle').filter(d => d.id === id)
     let t0 = 0
     for (let i = 0; i < pulses; i++) {
-      // outward pulse
       sel.transition()
         .delay(t0)
         .duration(pulseInDur)
@@ -216,7 +232,6 @@ function renderGraph({ nodes, links }) {
         .ease(d3.easeQuadOut)
       t0 += pulseInDur
 
-      // inward pulse
       sel.transition()
         .delay(t0)
         .duration(pulseOutDur)
@@ -240,29 +255,29 @@ function renderGraph({ nodes, links }) {
     .attr('fill','white').attr('opacity',0.8)
 
   labels.append('text')
-    .text(d=>d.label)
+    .text(d => d.label)
     .attr('font-size','0.75rem').attr('fill','#111')
     .attr('x',4).attr('y',0)
 
   // force simulation
   simulation = d3.forceSimulation(nodes)
-    .force('link',   d3.forceLink(links).id(d=>d.id).distance(200))
+    .force('link',   d3.forceLink(links).id(d => d.id).distance(200))
     .force('charge', d3.forceManyBody().strength(-800))
     .force('center', d3.forceCenter(width/2, height/2))
     .force('collide',d3.forceCollide().radius(50))
     .on('tick', () => {
       linkEls
-        .attr('x1', d=>d.source.x)
-        .attr('y1', d=>d.source.y)
-        .attr('x2', d=>d.target.x)
-        .attr('y2', d=>d.target.y)
+        .attr('x1', d => d.source.x)
+        .attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x)
+        .attr('y2', d => d.target.y)
 
       nodeEls
-        .attr('cx', d=>d.x)
-        .attr('cy', d=>d.y)
+        .attr('cx', d => d.x)
+        .attr('cy', d => d.y)
 
       labels
-        .attr('transform', d=>`translate(${d.x+15},${d.y+5})`)
+        .attr('transform', d => `translate(${d.x+15},${d.y+5})`)
         .selectAll('rect').each(function() {
           const txt = this.nextSibling
           if (txt && txt.getBBox) {
@@ -281,14 +296,14 @@ function renderGraph({ nodes, links }) {
     })
 
   svg.call(zoom)
-  renderGraph.zoom = zoom
+  renderGraph.zoom          = zoom
   renderGraph.zoomTransform = d3.zoomIdentity
   svg.call(zoom.transform, renderGraph.zoomTransform)
 }
 
 async function updateGraph() {
   try {
-    const raw = await fetchTopology()
+    const raw  = await fetchTopology()
     const data = applyFilter(raw, props.filter)
     renderGraph(data)
   } catch (e) {
@@ -317,16 +332,16 @@ function startCountdown() {
   }, 1000)
 }
 
-function startEdit()   { editing.value  = true }
-function cancelEdit()  { editing.value  = false; newName.value = selectedNode.value.label }
-async function saveName(){
-  if(!selectedNode.value) return
+function startEdit()   { editing.value = true }
+function cancelEdit()  { editing.value = false; newName.value = selectedNode.value.label }
+async function saveName() {
+  if (!selectedNode.value) return
   saving.value = true
   try {
     const mac = selectedNode.value.mac
     await fetch(`${API}/api/devices/${encodeURIComponent(mac)}/rename`, {
       method: 'PUT',
-      headers: { 'Content-Type':'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: newName.value })
     })
     selectedNode.value.label = newName.value
@@ -342,8 +357,6 @@ function closePanel() {
   selectedNode.value = null
   editing.value      = false
 }
-
-const _prev = new Map()
 
 onMounted(() => {
   updateGraph()

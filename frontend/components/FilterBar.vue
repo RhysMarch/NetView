@@ -4,7 +4,7 @@
     <input
       v-model="search"
       type="text"
-      placeholder="Filter by IP, MAC, or name…"
+      placeholder="Filter by IP, MAC, Name, Vendor, Online or Offline"
       class="w-full px-4 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
     />
   </div>
