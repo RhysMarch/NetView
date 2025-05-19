@@ -1,3 +1,4 @@
+<!-- components/Sidebar.vue -->
 <template>
   <div class="w-full h-full flex flex-col">
     <!-- Error banner -->
@@ -34,7 +35,7 @@
         >
           <div class="flex flex-col h-full min-h-0">
 
-            <!-- Alerts header: title + download icon on the right -->
+            <!-- Alerts header -->
             <div
               v-if="element.key === 'alerts'"
               class="flex items-center justify-between mb-4"
@@ -53,7 +54,7 @@
               </svg>
             </div>
 
-            <!-- Main line for other blocks -->
+            <!-- Stats lines -->
             <div
               v-else
               class="flex items-center justify-between cursor-move"
@@ -82,7 +83,7 @@
                 aria-label="Alerts"
               >
                 <li
-                  v-for="a in alerts"
+                  v-for="a in filteredAlerts"
                   :key="a.id"
                   class="flex items-center justify-between border-b border-gray-200 pl-2 py-2"
                 >
@@ -136,7 +137,7 @@
                   </div>
                 </li>
                 <li
-                  v-if="alerts.length === 0"
+                  v-if="filteredAlerts.length === 0"
                   class="py-2 text-center text-gray-500"
                 >
                   No alerts
@@ -156,23 +157,27 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import draggable from 'vuedraggable'
 import SidebarBlock from '~/components/SidebarBlock.vue'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const stats = ref({})
+const API    = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const stats  = ref({})
 const alerts = ref([])
-const loading = ref(true)
-const error = ref(null)
+const loading= ref(true)
+const error  = ref(null)
 const countdown = ref(0)
+
+const props = defineProps({
+  filter: { type: String, default: '' }
+})
 
 const blocks = ref([
   { key: 'health', title: 'Network Health' },
-  { key: 'total', title: 'Total Devices' },
+  { key: 'total',  title: 'Total Devices' },
   { key: 'online', title: 'Currently Online' },
-  { key: 'latency', title: 'Average Latency' },
+  { key: 'latency',title: 'Average Latency' },
   { key: 'alerts', title: 'Alerts' }
 ])
 
 let refreshTimer = null
-let tickTimer = null
+let tickTimer    = null
 
 async function fetchStats(showLoading = false) {
   if (showLoading) loading.value = true
@@ -203,6 +208,16 @@ async function fetchAlerts() {
     alerts.value = []
   }
 }
+
+const filteredAlerts = computed(() => {
+  if (!props.filter) return alerts.value
+  const f = props.filter.toLowerCase()
+  return alerts.value.filter(a =>
+    a.mac.toLowerCase().includes(f) ||
+    a.ip.toLowerCase().includes(f) ||
+    a.message.toLowerCase().includes(f)
+  )
+})
 
 function startCountdown() {
   tickTimer = setInterval(() => {
@@ -242,14 +257,14 @@ const latencyClass = computed(() => {
 })
 
 function exportAlerts() {
-  const lines = alerts.value.map(a => {
+  const lines = filteredAlerts.value.map(a => {
     const time = new Date(a.timestamp).toLocaleString()
     return `${time} — ${a.message}`
   })
   const blob = new Blob([lines.join("\n")], { type: "text/plain" })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement("a")
-  a.href = url
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
   a.download = `alerts_${new Date().toISOString()}.txt`
   document.body.appendChild(a)
   a.click()
