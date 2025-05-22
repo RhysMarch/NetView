@@ -1,9 +1,9 @@
-<!-- components/NetworkMap.vue -->
 <template>
   <div class="relative h-full">
-    <!-- Next-update countdown badge -->
+    <!-- Next‐update countdown badge -->
     <div
       class="absolute top-4 left-4 bg-white border border-gray-200 rounded-md shadow px-2 py-1 text-sm z-10"
+      title="Seconds until the graph automatically refreshes"
     >
       Refresh in {{ countdown }}s
     </div>
@@ -26,6 +26,7 @@
               v-model="newName"
               class="border border-gray-300 rounded p-1 flex-1 text-sm"
               placeholder="Enter name"
+              title="Type a new friendly name for this device"
             />
           </div>
           <div class="flex justify-start gap-2">
@@ -33,6 +34,7 @@
               class="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
               @click="saveName"
               :disabled="saving"
+              title="Save the new device name"
             >
               {{ saving ? 'Saving…' : 'Save' }}
             </button>
@@ -40,6 +42,7 @@
               class="px-3 py-1 bg-gray-200 rounded text-sm hover:bg-gray-300"
               @click="cancelEdit"
               :disabled="saving"
+              title="Cancel renaming"
             >
               Cancel
             </button>
@@ -47,11 +50,16 @@
         </template>
         <template v-else>
           <div class="flex items-center justify-between">
-            <span class="font-semibold text-lg break-all">{{ selectedNode.label }}</span>
+            <span
+              class="font-semibold text-lg break-all"
+              title="Device name displayed in the network graph"
+            >
+              {{ selectedNode.label }}
+            </span>
             <button
               class="ml-1 text-black hover:text-gray-700"
               @click="startEdit"
-              title="Rename"
+              title="Click to rename this device"
             >
               <!-- pencil icon -->
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="black" stroke-width="2">
@@ -62,16 +70,24 @@
         </template>
       </div>
 
-      <p class="text-sm"><strong>IP:</strong> {{ selectedNode.id }}</p>
-      <p class="mt-1 text-sm">
+      <p class="text-sm" title="Unique IP address (IPv4 or IPv6) identifying this device on the network">
+        <strong>IP:</strong> {{ selectedNode.id }}
+      </p>
+      <p class="mt-1 text-sm" title="Whether the device is currently reachable on the network">
         <strong>Status: </strong>
         <span :class="selectedNode.online ? 'text-emerald-600' : 'text-slate-500 italic'">
           {{ selectedNode.online ? 'Online' : 'Offline' }}
         </span>
       </p>
-      <p class="mt-1 text-sm"><strong>MAC:</strong> {{ selectedNode.mac || 'Unknown' }}</p>
-      <p class="mt-1 text-sm"><strong>Hostname:</strong> {{ selectedNode.hostname || 'Unknown' }}</p>
-      <p class="mt-1 text-sm"><strong>Vendor:</strong> {{ selectedNode.vendor || 'Unknown' }}</p>
+      <p class="mt-1 text-sm" title="Hardware MAC address uniquely assigned to the network interface">
+        <strong>MAC:</strong> {{ selectedNode.mac || 'Unknown' }}
+      </p>
+      <p class="mt-1 text-sm" title="Hostname as reported by the device (if available)">
+        <strong>Hostname:</strong> {{ selectedNode.hostname || 'Unknown' }}
+      </p>
+      <p class="mt-1 text-sm" title="Manufacturer of the network interface (e.g., Intel, Broadcom) based on the MAC OUI">
+        <strong>Vendor:</strong> {{ selectedNode.vendor || 'Unknown' }}
+      </p>
 
       <button
         class="mt-4 px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-sm"
@@ -83,8 +99,12 @@
 
     <!-- Legend -->
     <div class="absolute bottom-4 left-4 bg-white border border-gray-200 rounded-md shadow p-2 text-xs z-10">
-      <div><span class="inline-block w-3 h-3 rounded-full bg-emerald-500 mr-1"></span> Online</div>
-      <div><span class="inline-block w-3 h-3 rounded-full bg-slate-400 mr-1"></span> Offline</div>
+      <div>
+        <span class="inline-block w-3 h-3 rounded-full bg-emerald-500 mr-1"></span> Online
+      </div>
+      <div>
+        <span class="inline-block w-3 h-3 rounded-full bg-slate-400 mr-1"></span> Offline
+      </div>
     </div>
 
     <!-- Zoom Controls -->
@@ -132,12 +152,6 @@ async function fetchTopology() {
   return res.json()
 }
 
-/**
- * Single‐box filter:
- * - typing "online" or "offline" filters by status
- * - otherwise substring match against IP, MAC, name (label), or vendor
- * always includes the gateway node
- */
 function applyFilter({ nodes, links }, filter) {
   if (!filter) return { nodes, links }
   const f = filter.trim().toLowerCase()
@@ -145,11 +159,9 @@ function applyFilter({ nodes, links }, filter) {
 
   const kept = nodes.filter(n => {
     if (n.is_gateway) return true
-
     if (isStatus) {
       return f === 'online' ? n.online : !n.online
     }
-
     return (
       n.id.toLowerCase().includes(f) ||
       (n.mac    && n.mac.toLowerCase().includes(f)) ||
@@ -211,6 +223,16 @@ function renderGraph({ nodes, links }) {
       .on('drag',  (e,d) => { d.fx = e.x; d.fy = e.y })
       .on('end',   (e,d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null })
     )
+
+  // native SVG tooltip for each node
+  nodeEls.append('title')
+    .text(d =>
+      `Name: ${d.label}
+  IP: ${d.id}
+  Status: ${d.online ? 'Online' : 'Offline'}
+  MAC: ${d.mac || 'Unknown'}
+  Vendor: ${d.vendor || 'Unknown'}`
+      )
 
   // pulse animation
   const pulses     = 5

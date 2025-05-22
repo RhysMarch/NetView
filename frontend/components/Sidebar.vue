@@ -1,4 +1,3 @@
-<!-- components/Sidebar.vue -->
 <template>
   <div class="w-full h-full flex flex-col">
     <!-- Error banner -->
@@ -6,6 +5,7 @@
       v-if="error"
       class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-xl mb-4"
       role="alert"
+      title="An error occurred while loading stats"
     >
       <span class="block sm:inline">{{ error }}</span>
     </div>
@@ -14,6 +14,7 @@
     <div
       v-if="loading"
       class="bg-white border border-slate-300 rounded-xl shadow p-4 w-full mb-4"
+      title="Loading network statistics…"
     >
       <p class="text-gray-500">Loading statistics…</p>
     </div>
@@ -25,6 +26,7 @@
       item-key="key"
       animation="150"
       class="flex flex-col flex-grow space-y-4 overflow-hidden"
+      title="Drag to reorder your dashboard"
     >
       <template #item="{ element }">
         <SidebarBlock
@@ -48,6 +50,7 @@
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
+                title="Download alerts as a text file"
               >
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                   d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
@@ -61,16 +64,30 @@
             >
               <div class="flex-1">
                 <template v-if="element.key === 'health'">
-                  <span :class="healthClass">{{ stats.network_health }}</span>
+                  <span
+                    :class="healthClass"
+                    title="Overall network health (Excellent, Good, Fair, Poor)"
+                  >
+                    {{ stats.network_health }}
+                  </span>
                 </template>
                 <template v-else-if="element.key === 'total'">
-                  {{ stats.total_devices }}
+                  <span title="Total number of devices on the network">
+                    {{ stats.total_devices }}
+                  </span>
                 </template>
                 <template v-else-if="element.key === 'online'">
-                  {{ stats.current_online_devices }}
+                  <span title="Number of devices currently online">
+                    {{ stats.current_online_devices }}
+                  </span>
                 </template>
                 <template v-else-if="element.key === 'latency'">
-                  <span :class="latencyClass">{{ stats.average_latency }}</span>
+                  <span
+                    :class="latencyClass"
+                    title="Average network latency in milliseconds"
+                  >
+                    {{ stats.average_latency }}
+                  </span>
                 </template>
               </div>
             </div>
@@ -81,11 +98,13 @@
                 class="list-none overflow-y-auto max-h-[35vh] pr-6"
                 role="list"
                 aria-label="Alerts"
+                title="List of recent network alerts"
               >
                 <li
                   v-for="a in filteredAlerts"
                   :key="a.id"
                   class="flex items-center justify-between border-b border-gray-200 pl-2 py-2"
+                  :title="`At ${formatTimestamp(a.timestamp)},: ${a.message}`"
                 >
                   <div class="flex-1 pr-2">
                     <p class="text-sm text-gray-800">{{ a.message }}</p>
@@ -97,6 +116,7 @@
                       class="h-5 w-5 text-green-500"
                       fill="currentColor"
                       viewBox="0 0 20 20"
+                      title="New device joined the network"
                     >
                       <path
                         fill-rule="evenodd"
@@ -110,6 +130,7 @@
                       xmlns="http://www.w3.org/2000/svg"
                       viewBox="0 0 20 20"
                       fill="currentColor"
+                      title="Device came back online"
                     >
                       <circle cx="10" cy="10" r="8" />
                     </svg>
@@ -119,6 +140,7 @@
                       xmlns="http://www.w3.org/2000/svg"
                       viewBox="0 0 20 20"
                       fill="currentColor"
+                      title="Device went offline"
                     >
                       <circle cx="10" cy="10" r="8" />
                     </svg>
@@ -127,6 +149,7 @@
                       class="h-5 w-5 text-yellow-500"
                       fill="currentColor"
                       viewBox="0 0 20 20"
+                      title="Warning-level alert"
                     >
                       <path
                         fill-rule="evenodd"
@@ -139,6 +162,7 @@
                 <li
                   v-if="filteredAlerts.length === 0"
                   class="py-2 text-center text-gray-500"
+                  title="No alerts to show"
                 >
                   No alerts
                 </li>
