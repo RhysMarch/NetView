@@ -1,6 +1,8 @@
 # NetView
 
-![NetView Demo](assets/NetView.gif)
+<p align="center">
+  <img src="assets/NetView.gif" alt="NetView Demo" />
+</p>
 
 **NetView** is an intuitive, user-friendly network monitoring tool that discovers devices on your LAN and displays real-time statistics. Built in Python with a clean Nuxt interface.
 
