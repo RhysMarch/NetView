@@ -21,3 +21,22 @@
    ```bash
    git clone https://github.com/RhysMarch/NetView.git
    cd NetView
+   
+2. **Create a virtual environment and install requirements**  
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+    pip install -r requirements.txt
+    ```
+   
+3. **Run the backend**
+    ```bash
+    uvicorn backend.app.main:app --reload
+    ```
+
+4. **Run the frontend**
+    ```bash
+    cd frontend
+    npm install
+    npm run dev
+    ```
