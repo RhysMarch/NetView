@@ -1,3 +1,4 @@
+<!-- Sidebar.vue -->
 <template>
   <div class="w-full h-full flex flex-col">
     <!-- Error banner -->
@@ -95,7 +96,7 @@
             <!-- Alerts list -->
             <template v-if="element.key === 'alerts'">
               <ul
-                class="list-none overflow-y-auto max-h-[35vh] pr-6"
+                class="list-none overflow-y-auto max-h-[45vh] pr-6"
                 role="list"
                 aria-label="Alerts"
                 title="List of recent network alerts"

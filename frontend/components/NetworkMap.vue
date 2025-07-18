@@ -1,3 +1,4 @@
+<!-- NetworkMap.vue -->
 <template>
   <div class="relative h-full">
     <!-- Next‐update countdown badge -->
